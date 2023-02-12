@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RuleSet Name="Release" Description=" " ToolsVersion="15.0">
+<Rules AnalyzerId="Microsoft.Analyzers.NativeCodeAnalysis" RuleNamespace="Microsoft.Rules.Native">
+<Rule Id="C6244" Action="Error" />
+</Rules>
+</RuleSet>
