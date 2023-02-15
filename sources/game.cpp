@@ -93,6 +93,10 @@ void gameInit(){
     game->player1.mass = 80.0f;
 
     game->ballDir = V2(1.75f, -2.0f);
+
+    loadAudio();
+    playAudio();
+    
 }
 
 void gameHandleInput(){
