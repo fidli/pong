@@ -30,7 +30,8 @@ static inline void initGameRender() {
 
 }
 
-inline void render(Game * state, f32 dt) {
+inline void render(Game * state, f64 dt) {
+    (void)dt;
 	PROFILE_SCOPE(render);
 	glClearColor(0, 0, 0, 1);
 	glClearDepth(0);
@@ -54,8 +55,7 @@ inline void render(Game * state, f32 dt) {
     glUseProgram(gl->game.program);
 
 	// NOTE(fidli): gui calibrated to 1080p;
-	v2 resolutionScale = V2(platform->resolution.x / 1920.0, platform->resolution.y / 1080.0);
-	f32 gameZoom = 1;
+	v2 resolutionScale = V2(platform->resolution.x / 1920.0f, platform->resolution.y / 1080.0f);
     glRenderGame(state, resolutionScale);
 
 	{//gui

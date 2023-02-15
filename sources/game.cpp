@@ -81,7 +81,7 @@ void gameInit(){
     game->ballDirAccumulator = 0.0;
     game->ballAcc = 0.0f;
 
-    game->aiAccumulator = 0.0f;
+    game->aiAccumulator = 0.0;
     game->vel2 = 0.0f;
     
     game->aiStepCount = 0;
@@ -91,6 +91,8 @@ void gameInit(){
 
     game->player1.pos = V2(0.0f, 0.5);
     game->player1.mass = 80.0f;
+
+    game->ballDir = V2(1.75f, -2.0f);
 }
 
 void gameHandleInput(){
@@ -130,7 +132,7 @@ void gameFixedStep(f64 dt){
         game->aiStepCount = steps + 1;
         game->aiCurrentStep = 0;
 
-        game->aiAccumulator = fmod(game->aiAccumulator, AI_STEP);
+        game->aiAccumulator = fmod64(game->aiAccumulator, AI_STEP);
     }
 
     if ( game->aiCurrentStep < game->aiStepCount)
@@ -159,7 +161,7 @@ void gameFixedStep(f64 dt){
     game->ballDirAccumulator += dt;
     if(game->ballVelocity == 0)
     {
-        f32 coef = ABS(fmod(game->ballDirAccumulator, 2.0f)-1.0f);
+        f32 coef = CAST(f32, ABS(fmod64(game->ballDirAccumulator, 2.0f)-1.0f));
         v2 start = V2(1.75f, -2.0f);
         v2 end = V2(1.75f, 2.0f);
         ASSERT(coef >= 0 && coef <= 1.0f);
@@ -197,7 +199,7 @@ void gameFixedStep(f64 dt){
 
 
     if(game->vel2 != 0.0f){
-        game->player2 = clamp(game->player2 + dt*game->vel2, game->playerHeight/2.0f, 1.0f - game->playerHeight/2.0f);
+        game->player2 = clamp(CAST(f32, game->player2 + dt*game->vel2), game->playerHeight/2.0f, 1.0f - game->playerHeight/2.0f);
     }
 
     f32 ballWeight = 1.0; // kG
@@ -213,14 +215,14 @@ void gameFixedStep(f64 dt){
 
     game->ballAcc -= FfrictionBall / ballWeight;
     if ((game->player1Action & (1 << GameAction_Kick)) && game->ballVelocity == 0.0f){
-        game->ballVelocity += game->ballAcc * INSTANT_DURATION;
+        game->ballVelocity += game->ballAcc * CAST(f32, INSTANT_DURATION);
     }else{
-        game->ballVelocity += game->ballAcc * dt;
+        game->ballVelocity += game->ballAcc * CAST(f32, dt);
     }
     game->ballVelocity = MAX(0, game->ballVelocity);
     
 
-    f32 remain = game->ballVelocity*dt;
+    f32 remain = game->ballVelocity*CAST(f32, dt);
     i32 bounces = 5;
 
     v2 currentBallDir = game->ballDir;
@@ -271,7 +273,7 @@ void gameFixedStep(f64 dt){
     game->ballDir = currentBallDir;
 }
 
-Game gameInterpolateSteps(Game * from, Game * to, f64 t)
+Game gameInterpolateSteps(Game * from, Game * to, f32 t)
 {
     Game result = *to;
     
@@ -284,6 +286,7 @@ Game gameInterpolateSteps(Game * from, Game * to, f64 t)
 }
 
 void gameStep(f64 dt){
+    (void)dt;
     game->player1Action = 0;
 }
 

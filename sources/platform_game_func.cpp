@@ -22,7 +22,7 @@ struct Platform{
 
     u64 frameIndex;
 
-    float fps;
+    f32 fps;
     u32 framesRenderedSinceLastProfileClear;
     bool showProfile;
 

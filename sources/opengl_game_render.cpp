@@ -29,6 +29,7 @@ static inline void initGameShader() {
 
 
 void glRenderGame(Game * state, v2 resolutionScale){
+    (void)resolutionScale;
     f32 pxSize = 0.01f * platform->resolution.y;
     i32 spans = 50;
         v4 color = { 1, 1, 1, 1 };

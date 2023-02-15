@@ -1,4 +1,6 @@
 //NOTE(AK): ---------------- instead of cstd
+#define _CRT_SECURE_NO_WARNINGS // using unsafe stds
+#pragma warning(disable : 4201) // nameless union/struct
 extern "C" void * __cdecl memset(void *, int, size_t);
 #pragma intrinsic(memset)
 extern "C" void * __cdecl memcpy(void *, const void *, size_t);
@@ -12,7 +14,7 @@ extern "C"{
         while (count--)
         {
             (*bytes) = (char) c;
-            (*bytes++);
+            bytes++;
         }
         return dest;
     }
@@ -62,6 +64,7 @@ HINSTANCE hInstance;
 #include "util_opengl.cpp"
 HWND window;
 #include "platform/windows_imgui.cpp"
+#include "platform/windows_audio.cpp"
 
 //NOTE(AK): these are set after memory initialisation
 struct Platform;
@@ -100,8 +103,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
                 return 0;
             }break;
             case WM_MOUSEMOVE:{
-                i16 x = lParam;
-                i16 y = lParam >> 16;
+                i16 x = CAST(i16, lParam);
+                i16 y = CAST(i16, lParam >> 16);
                 game->input.mouse.pos = DV2(x, y);
                 platform->mouseOut = false;
             }break;
@@ -134,7 +137,9 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
 
-static inline int main(LPWSTR * argvW, int argc) {
+int main(LPWSTR * argvW, int argc) {
+    (void)argvW;
+    (void)argc;
     LPVOID memoryStart = VirtualAlloc(NULL, TEMP_MEM + PERSISTENT_MEM, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
     if (memoryStart) {
@@ -216,7 +221,7 @@ static inline int main(LPWSTR * argvW, int argc) {
         LOG(default, startup, "Init window success: %u", initSuccess);
         //Open gl initialisation
         //is used later, also when deleting
-        HGLRC gameGlContext;
+        HGLRC gameGlContext = {};
         HDC dc = GetDC(window);
         //creating drawing context, so that we can use opengl
         if(initSuccess){
@@ -284,6 +289,8 @@ static inline int main(LPWSTR * argvW, int argc) {
         HCURSOR cursor = (HCURSOR) LoadImage(hInstance, IDC_ARROW, IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE);
         //END OF INITIALISATION ROUTINES
         
+        initSuccess &= initAudio(window);
+        LOG(default, startup, "Init audio success: %u", initSuccess);
 
         if(initSuccess){
             //show window and get resolution
@@ -308,11 +315,14 @@ static inline int main(LPWSTR * argvW, int argc) {
                 r &= flipY(&image);
                 ASSERT(r);
             }
-            GLint interp;
+            GLint interp = GL_RGBA;
             if(image.info.interpretation == BitmapInterpretationType_RGBA){
                 interp = GL_RGBA;
             }else if(image.info.interpretation == BitmapInterpretationType_RGB){
                 interp = GL_RGB;
+            }
+            else{
+                INV;
             }
             ASSERT(image.info.origin == BitmapOriginType_TopLeft);
             glGenTextures(1, &platform->render.cursorTexture);
@@ -324,8 +334,7 @@ static inline int main(LPWSTR * argvW, int argc) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             POP;
         }
-        bool r = true;
-        r &= compileShaders(___sources_opengl_shaders_game_vert, ___sources_opengl_shaders_game_vert_len, ___sources_opengl_shaders_game_frag, ___sources_opengl_shaders_game_frag_len, &gl->game.vertexShader, &gl->game.fragmentShader, &gl->game.program);
+        bool r = compileShaders(___sources_opengl_shaders_game_vert, ___sources_opengl_shaders_game_vert_len, ___sources_opengl_shaders_game_frag, ___sources_opengl_shaders_game_frag_len, &gl->game.vertexShader, &gl->game.fragmentShader, &gl->game.program);
         ASSERT(r);
         initGameShader();
         LOG(default, shaders, "Game shaders loaded");
@@ -354,7 +363,7 @@ static inline int main(LPWSTR * argvW, int argc) {
             }
             wasShowProfile = platform->showProfile;
             if(fpsTimer->ticked){
-                platform->fps = CAST(f32, platform->frameIndex - lastFpsFrameIndex) / (1.0f + fpsTimer->progressAbsolute);
+                platform->fps = CAST(f32, platform->frameIndex - lastFpsFrameIndex) / CAST(f32, (1.0f + fpsTimer->progressAbsolute));
                 lastFpsFrameIndex = platform->frameIndex;
             }
             f64 newTime = getProcessCurrentTime();
@@ -382,7 +391,7 @@ static inline int main(LPWSTR * argvW, int argc) {
                 accumulator -= FIXED_STEP;
             }
             gameStep(frameTime);
-            Game toRender = gameInterpolateSteps(&previousState, game, accumulator/FIXED_STEP);
+            Game toRender = gameInterpolateSteps(&previousState, game, CAST(f32, accumulator/FIXED_STEP));
             
             if(platform->mouseOut){
                 if(GetCursor() == NULL){
@@ -393,8 +402,9 @@ static inline int main(LPWSTR * argvW, int argc) {
                     cursor = SetCursor(NULL);
                 }
             }
+            mix();
             render(&toRender, frameTime);
-            bool r = SwapBuffers(dc) == TRUE;//&& DwmFlush() == S_OK;
+            r = SwapBuffers(dc) == TRUE;//&& DwmFlush() == S_OK;
             
             ASSERT(r);
             if(!r){
