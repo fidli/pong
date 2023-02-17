@@ -61,6 +61,8 @@ struct Game {
     i32 aiCurrentStep;
 
     u32 player1Action;
+
+    AudioTrack track;
 };
 
 extern Game * game;
@@ -94,8 +96,8 @@ void gameInit(){
 
     game->ballDir = V2(1.75f, -2.0f);
 
-    loadAudio();
-    playAudio();
+    game->track = loadAudio();
+    playAudio(&game->track);
     
 }
 
@@ -212,7 +214,7 @@ void gameFixedStep(f64 dt){
 
     game->ballAcc = 0.0f;
     if ((game->player1Action & (1 << GameAction_Kick)) && game->ballVelocity == 0.0f){
-        f32 force = 100.0f;
+        f32 force = 1000.0f;
         game->ballAcc = force  / ballWeight;
         game->ballDirAccumulator = 0;
     }
@@ -255,6 +257,7 @@ void gameFixedStep(f64 dt){
 
             currentBallDir = reflectedPart;
             //bounces--;
+            //playAudio(&game->track);
         } else if(newBall.x > 1.75f){
             game->score1 += 1;
             game->ballVelocity = 0;

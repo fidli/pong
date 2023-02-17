@@ -17,6 +17,6 @@ for %%f in (..\sources\opengl_shaders\*) do xxd -i %%f >> shaders.h
 for %%f in (..\baselib\opengl_shaders\*) do xxd -i %%f >> shaders.h
 rem CANNOT USE SOME C++ FEATURES, std lib is ripped off (https://hero.handmade.network/forums/code-discussion/t/94)
 rem for release: /w24061 - full switches
-call cl.exe /nologo /W4 /WX /EHa- /GS- /Gs99999999 /GR- /Od /Zi /FS /I"%cd%\..\sources" /FI"%cd%\shaders.h" /I %BASELIB% /I %LIBDIR% /Fd"game_debug.pdb" /Fe"game_debug.exe" /Zc:threadSafeInit- %FILES%  /link /INCREMENTAL:NO /NODEFAULTLIB /SUBSYSTEM:WINDOWS %LIBS% /STACK:0x1000000,0x1000000
+call cl.exe /nologo /W3 /WX /EHa- /GS- /Gs99999999 /GR- /Od /Zi /FS /I"%cd%\..\sources" /FI"%cd%\shaders.h" /I %BASELIB% /I %LIBDIR% /Fd"game_debug.pdb" /Fe"game_debug.exe" /Zc:threadSafeInit- %FILES%  /link /INCREMENTAL:NO /NODEFAULTLIB /SUBSYSTEM:WINDOWS %LIBS% /STACK:0x1000000,0x1000000
 POPD
 ctime -end local/debug.ctime
