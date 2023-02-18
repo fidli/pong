@@ -97,7 +97,6 @@ void gameInit(){
     game->ballDir = V2(1.75f, -2.0f);
 
     game->track = loadAudio();
-    playAudio(&game->track);
     
 }
 
@@ -257,7 +256,7 @@ void gameFixedStep(f64 dt){
 
             currentBallDir = reflectedPart;
             //bounces--;
-            //playAudio(&game->track);
+            playAudio(&game->track);
         } else if(newBall.x > 1.75f){
             game->score1 += 1;
             game->ballVelocity = 0;
