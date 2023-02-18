@@ -67,7 +67,7 @@ struct Game {
 
 extern Game * game;
 
-void gameInit(){
+void gameInit(AudioTrack track){
 
     // pitch is 1.75 wide and 1 tall
     game->width = 1.75;
@@ -96,7 +96,8 @@ void gameInit(){
 
     game->ballDir = V2(1.75f, -2.0f);
 
-    game->track = loadAudio();
+    //game->track = loadAudio();
+    game->track = track;
     
 }
 

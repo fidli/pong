@@ -339,7 +339,21 @@ int main(LPWSTR * argvW, int argc) {
         initGameShader();
         LOG(default, shaders, "Game shaders loaded");
 
-        gameInit();
+        AudioTrack track;
+        { // oink
+            const char * fullPath = "resources\\audio\\oink.wav";
+            u32 fileSize = 0;
+            bool r = getFileSize(fullPath, &fileSize);
+            ASSERT(r);
+            FileContents audioFile = {};
+            audioFile.size = fileSize;
+            audioFile.contents = &PPUSHA(char, fileSize);
+            r = readFile(fullPath, &audioFile);
+            ASSERT(r);
+            r &= decodeWAV(&audioFile, &track);
+            ASSERT(r);
+        }
+        gameInit(track);
 
         keymap[GameAction_Up].key = 0x57;
         keymap[GameAction_Down].key = 0x53;
