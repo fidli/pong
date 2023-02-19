@@ -1,41 +1,4 @@
-//NOTE(AK): ---------------- instead of cstd
-#define _CRT_SECURE_NO_WARNINGS // using unsafe stds
-#pragma warning(disable : 4201) // nameless union/struct
-extern "C" void * __cdecl memset(void *, int, size_t);
-#pragma intrinsic(memset)
-extern "C" void * __cdecl memcpy(void *, const void *, size_t);
-#pragma intrinsic(memcpy)
-
-extern "C"{
-#pragma function(memset)
-    void * memset(void * dest, int c, size_t count)
-    {
-        char * bytes = (char *) dest;
-        while (count--)
-        {
-            (*bytes) = (char) c;
-            bytes++;
-        }
-        return dest;
-    }
-    
-#pragma function(memcpy)
-    void *memcpy(void *dest, const void *src, size_t count)
-    {
-        char *dest8 = (char *)dest;
-        const char *src8 = (const char *)src;
-        while (count--)
-        {
-            *dest8++ = *src8++;
-        }
-        return dest;
-    }
-}
-extern "C"{
-    int _fltused;
-};
-
-//NOTE(AK): --------------- end of instead of cstd
+#include "platform/windows_nocrt.h"
 #include <Windows.h>
 #include <dwmapi.h>
 #include "platform/windows_types.h"
@@ -57,7 +20,6 @@ HINSTANCE hInstance;
 #include "platform/windows_io.cpp"
 #include "util_log.cpp"
 #include "util_string.cpp"
-#include "util_conv.cpp"
 #include "util_data.cpp"
 #include "util_font.cpp"
 #include "platform/windows_opengl.cpp"

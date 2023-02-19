@@ -5,7 +5,7 @@ rem call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\vcvar
 rem call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
 cls
 
-set FILES="%cd%\sources\windows64_game_platform.cpp"
+set FILES="%cd%\sources\windows64_main.cpp"
 set LIBS="Opengl32.lib" "Kernel32.lib" "Advapi32.lib" "Shell32.lib" "User32.lib" "Gdi32.lib" "Dwmapi.lib" "Dsound.lib"
 set BASELIB=""%cd%\baselib""
 set LIBDIR=""%cd%\lib""

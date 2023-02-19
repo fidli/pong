@@ -8,7 +8,7 @@ ctime -begin local/debug.ctime
 set LIBS="Opengl32.lib" "Kernel32.lib" "Advapi32.lib" "Shell32.lib" "User32.lib" "Gdi32.lib" "Dwmapi.lib" "Dsound.lib"
 set BASELIB=""%cd%\baselib""
 set LIBDIR=""%cd%\lib""
-set FILES="%cd%\sources\windows64_game_platform.cpp"
+set FILES="%cd%\sources\windows64_main.cpp"
 pushd build
 del game_debug.pdb 2> NUL
 del *.obj 2> NUL
