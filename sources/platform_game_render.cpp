@@ -6,67 +6,118 @@ struct OpenGL {
 		GLint fragmentShader;
 		GLint program;
 
-		GLint scaleLocation;
-		GLint positionLocation;
+		GLint modelMatrixLocation;
+		GLint worldMatrixLocation;
+		GLint projectionMatrixLocation;
 		GLint overlayColorLocation;
 		GLint samplerLocation;
 
 		GLint textureOffsetLocation;
 		GLint textureScaleLocation;
 	} game;
+	struct {
+		GLint vertexShader;
+		GLint fragmentShader;
+		GLint program;
+
+		GLint positionLocation;
+		GLint scaleLocation;
+		GLint overlayColorLocation;
+		GLint samplerLocation;
+
+		GLint textureOffsetLocation;
+		GLint textureScaleLocation;
+	} hud;
+	struct {
+		GLint vertexShader;
+		GLint fragmentShader;
+		GLint program;
+
+		GLint modelMatrixLocation;
+		GLint worldMatrixLocation;
+		GLint projectionMatrixLocation;
+		GLint overlayColorLocation;
+	} wire;
 	GLuint quad;
 };
 
 
 static inline void initGameShader() {
-	gl->game.positionLocation = glGetUniformLocation(gl->game.program, "position");
-	gl->game.scaleLocation = glGetUniformLocation(gl->game.program, "scale");
+	gl->game.modelMatrixLocation = glGetUniformLocation(gl->game.program, "modelMatrix");
+	gl->game.worldMatrixLocation = glGetUniformLocation(gl->game.program, "worldMatrix");
+	gl->game.projectionMatrixLocation = glGetUniformLocation(gl->game.program, "projectionMatrix");
 	gl->game.overlayColorLocation = glGetUniformLocation(gl->game.program, "overlayColor");
 	gl->game.samplerLocation = glGetUniformLocation(gl->game.program, "sampler");
 	gl->game.textureOffsetLocation = glGetUniformLocation(gl->game.program, "textureOffset");
 	gl->game.textureScaleLocation = glGetUniformLocation(gl->game.program, "textureScale");
+
+	gl->hud.positionLocation = glGetUniformLocation(gl->hud.program, "position");
+	gl->hud.scaleLocation = glGetUniformLocation(gl->hud.program, "scale");
+	gl->hud.overlayColorLocation = glGetUniformLocation(gl->hud.program, "overlayColor");
+	gl->hud.samplerLocation = glGetUniformLocation(gl->hud.program, "sampler");
+	gl->hud.textureOffsetLocation = glGetUniformLocation(gl->hud.program, "textureOffset");
+	gl->hud.textureScaleLocation = glGetUniformLocation(gl->hud.program, "textureScale");
+
+	gl->wire.modelMatrixLocation = glGetUniformLocation(gl->wire.program, "modelMatrix");
+	gl->wire.worldMatrixLocation = glGetUniformLocation(gl->wire.program, "worldMatrix");
+	gl->wire.projectionMatrixLocation = glGetUniformLocation(gl->wire.program, "projectionMatrix");
+	gl->wire.overlayColorLocation = glGetUniformLocation(gl->wire.program, "overlayColor");
 }
 
 
-void glRenderGame(Game * state, v2 resolutionScale){
+void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
     (void)resolutionScale;
-    f32 pxSize = 0.01f * platform->resolution.y;
-    i32 spans = 50;
-        v4 color = { 1, 1, 1, 1 };
-        glUniform4f(gl->game.overlayColorLocation, color.x, color.y, color.z, color.w);
-    for(i32 i = 0; i < spans; i++){
-        f32 pos = 2.0f * (CAST(f32, i) / spans);
-        glUniform3f(gl->game.positionLocation, 0 - ((pxSize/2.0f)/platform->resolution.x), pos - 1.0f, 1.0f);
-        v2 scale = V2(pxSize / CAST(f32, platform->resolution.x), pxSize / CAST(f32, platform->resolution.y));
-        glUniform2f(gl->game.scaleLocation, scale.x, scale.y);
+
+    glUniformMatrix3fv(gl->game.projectionMatrixLocation, 1, true, projection->c);
+
+    for(i32 i = 0; i < ARRAYSIZE(game->entities); i++)
+    {
+        if (i == 0){
+            v4 color = {0, 1, 0, 0.1f};
+            glUniform4f(gl->game.overlayColorLocation, color.x, color.y, color.z, color.w);
+        }
+        else{
+            v4 color = {1, 1, 1, 1};
+            glUniform4f(gl->game.overlayColorLocation, color.x, color.y, color.z, color.w);
+        }
+
+        CollisionRect * body = &game->entities[i].body;
+        mat3 model = scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
+        glUniformMatrix3fv(gl->game.modelMatrixLocation, 1, true, model.c);
+
+        mat3 world = translationMatrix(body->pos);
+        glUniformMatrix3fv(gl->game.worldMatrixLocation, 1, true, world.c);
 
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
-
     
-    if (state->ballVelocity == 0){
-        v2 scale = V2(state->ballWidth*2/state->width/2.0f, state->ballWidth*2/2.0f);
-        glUniform2f(gl->game.scaleLocation, scale.x, scale.y);
 
-        glUniform3f(gl->game.positionLocation, (((state->ball.x+(state->ballDir.x/16.0f))/state->width)*2.0f) - 1.0f - (state->ballWidth/2.0f/state->width), ((state->ball.y+state->ballDir.y/16.0f)*2.0f) - 1.0f - (state->ballWidth/2.0f), 1.0f);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glUseProgram(gl->wire.program);
+    glUniformMatrix3fv(gl->wire.projectionMatrixLocation, 1, true, projection->c);
+    v4 color = {0, 1, 0, 1};
+    glUniform4f(gl->wire.overlayColorLocation, color.x, color.y, color.z, color.w);
+    for(i32 i = 0; i < ARRAYSIZE(game->entities); i++)
+    {
+        Entity * entity = &game->entities[i];
+        mat3 model = scalingMatrix(entity->body.size) * translationMatrix(V2(-0.5f, -0.5f));
+        glUniformMatrix3fv(gl->wire.modelMatrixLocation, 1, true, model.c);
+
+        mat3 world = translationMatrix(entity->body.pos);
+        glUniformMatrix3fv(gl->wire.worldMatrixLocation, 1, true, world.c);
+
+        glDrawArrays(GL_LINES, 4, 8);
     }
-    v2 scale = V2(state->playerWidth*2/state->width, state->playerHeight*2);
-    glUniform2f(gl->game.scaleLocation, scale.x, scale.y);
+    for(i32 i = 0; i < ARRAYSIZE(game->boundaries); i++)
+    {
+        CollisionRect * body = &game->boundaries[i];
+        mat3 model = scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
+        glUniformMatrix3fv(gl->wire.modelMatrixLocation, 1, true, model.c);
 
-    glUniform3f(gl->game.positionLocation, -1.0f, (state->player1.pos.y*2.0f) - 1.0f - (state->playerHeight), 1.0f);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        mat3 world = translationMatrix(body->pos);
+        glUniformMatrix3fv(gl->wire.worldMatrixLocation, 1, true, world.c);
 
-    glUniform3f(gl->game.positionLocation, 1.0f - (state->playerWidth*2)/state->width, (state->player2*2.0f) - 1.0f - (state->playerHeight), 1.0f);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-    scale = V2(state->ballWidth*2/state->width, state->ballWidth*2);
-    glUniform2f(gl->game.scaleLocation, scale.x, scale.y);
-
-    glUniform3f(gl->game.positionLocation, ((state->ball.x/state->width)*2.0f) - 1.0f - (state->ballWidth/state->width), (state->ball.y*2.0f) - 1.0f - (state->ballWidth), 1.0f);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    
-    
+        glDrawArrays(GL_LINES, 4, 8);
+    }
 }
 
 
@@ -85,7 +136,11 @@ static inline void initGameRender() {
 			0, 0,
 			0, 1,
 			1, 1,
-			1, 0
+			1, 0,
+			0, 0,
+			1, 0,
+			1, 1,
+			0, 1
 		};
 
 		glBufferData(GL_ARRAY_BUFFER, sizeof(box), box, GL_STATIC_DRAW);
@@ -120,7 +175,9 @@ inline void render(Game * state, f64 dt) {
 
 	// NOTE(fidli): gui calibrated to 1080p;
 	v2 resolutionScale = V2(platform->resolution.x / 1920.0f, platform->resolution.y / 1080.0f);
-    glRenderGame(state, resolutionScale);
+    f32 ditch = 10.0f;
+    mat3 projection = ortoProjectionMatrix(game->field->body.size + V2(ditch, ditch), platform->resolution);
+    glRenderGame(state, resolutionScale, &projection);
 
 	{//gui
 		PROFILE_SCOPE(GUI);
@@ -252,29 +309,35 @@ inline void render(Game * state, f64 dt) {
 		guiEnd();
 		POPI;
 	}
+    glUseProgram(gl->hud.program);
+
+    if (length(state->ball->vel) == 0){
+        v2 scale = V2(8.0f/platform->resolution.x, 8.0f/platform->resolution.y);
+        glUniform2f(gl->hud.scaleLocation, scale.x, scale.y);
+		v4 color = { 1, 1, 1, 1 };
+		glUniform4f(gl->hud.overlayColorLocation, color.x, color.y, color.z, color.w);
+
+        v2 screenPos = projection * (state->ball->body.pos + state->ball->dir);
+        glUniform2f(gl->hud.positionLocation, screenPos.x, screenPos.y);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+    
 	// cursor
 	{
-		glBindBuffer(GL_ARRAY_BUFFER, gl->quad);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
-		glUseProgram(gl->game.program);
-
-		glUniform3f(gl->game.positionLocation, ((2 * state->input.mouse.pos.x) / CAST(f32, platform->resolution.x)) - 1, ((2 * state->input.mouse.pos.y) / CAST(f32, platform->resolution.y)) - 1.0f, 1.0f);
+		glUniform2f(gl->hud.positionLocation, ((2 * state->input.mouse.pos.x) / CAST(f32, platform->resolution.x)) - 1, -(((2 * state->input.mouse.pos.y) / CAST(f32, platform->resolution.y)) - 1.0f));
 		v2 scale = V2(64.0f / (platform->resolution.x), 64.0f / (platform->resolution.y));
-		glUniform2f(gl->game.scaleLocation, scale.x, scale.y);
+		glUniform2f(gl->hud.scaleLocation, scale.x, -scale.y);
 
         glActiveTexture(GL_TEXTURE0 + 0);
 		glBindTexture(GL_TEXTURE_2D, platform->render.cursorTexture);
 
 		v4 color = { 0, 0, 0, 0 };
-		glUniform4f(gl->game.overlayColorLocation, color.x, color.y, color.z, color.w);
+		glUniform4f(gl->hud.overlayColorLocation, color.x, color.y, color.z, color.w);
 
-		glUniform2f(gl->game.textureScaleLocation, 1, 1);
-		glUniform2f(gl->game.textureOffsetLocation, 0, 0);
+		glUniform2f(gl->hud.textureScaleLocation, 1, 1);
+		glUniform2f(gl->hud.textureOffsetLocation, 0, 0);
 
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	}
-
 }
 

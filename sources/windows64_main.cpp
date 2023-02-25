@@ -298,6 +298,10 @@ int main(LPWSTR * argvW, int argc) {
         }
         bool r = compileShaders(___sources_opengl_shaders_game_vert, ___sources_opengl_shaders_game_vert_len, ___sources_opengl_shaders_game_frag, ___sources_opengl_shaders_game_frag_len, &gl->game.vertexShader, &gl->game.fragmentShader, &gl->game.program);
         ASSERT(r);
+        r &= compileShaders(___sources_opengl_shaders_hud_vert, ___sources_opengl_shaders_hud_vert_len, ___sources_opengl_shaders_hud_frag, ___sources_opengl_shaders_hud_frag_len, &gl->hud.vertexShader, &gl->hud.fragmentShader, &gl->hud.program);
+        ASSERT(r);
+        r &= compileShaders(___sources_opengl_shaders_wire_vert, ___sources_opengl_shaders_wire_vert_len, ___sources_opengl_shaders_wire_frag, ___sources_opengl_shaders_wire_frag_len, &gl->wire.vertexShader, &gl->wire.fragmentShader, &gl->wire.program);
+        ASSERT(r);
         initGameShader();
         LOG(default, shaders, "Game shaders loaded");
 
@@ -410,6 +414,14 @@ int main(LPWSTR * argvW, int argc) {
         glDeleteShader(gl->game.fragmentShader);
         glDeleteShader(gl->game.vertexShader);
         glDeleteProgram(gl->game.program);
+
+        glDeleteShader(gl->hud.fragmentShader);
+        glDeleteShader(gl->hud.vertexShader);
+        glDeleteProgram(gl->hud.program);
+
+        glDeleteShader(gl->wire.fragmentShader);
+        glDeleteShader(gl->wire.vertexShader);
+        glDeleteProgram(gl->wire.program);
         
         guiFinalize();
         //end of shaders and stuff
