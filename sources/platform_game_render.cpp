@@ -72,21 +72,38 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
 
     for(i32 i = 0; i < ARRAYSIZE(game->entities); i++)
     {
-        if (i == 0){
-            v4 color = {0, 1, 0, 0.1f};
-            glUniform4f(gl->game.overlayColorLocation, color.x, color.y, color.z, color.w);
-        }
-        else{
-            v4 color = {1, 1, 1, 1};
-            glUniform4f(gl->game.overlayColorLocation, color.x, color.y, color.z, color.w);
-        }
+        Entity * entity = &game->entities[i];
+        glUniform4f(gl->game.overlayColorLocation, entity->overlayColor.x, entity->overlayColor.y, entity->overlayColor.z, entity->overlayColor.w);
 
-        CollisionRect * body = &game->entities[i].body;
-        mat3 model = scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
+        CollisionRect * body = &entity->body;
+        mat3 model = rotationYMatrix3(degToRad(entity->yRotationDeg)) * scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
         glUniformMatrix3fv(gl->game.modelMatrixLocation, 1, true, model.c);
 
         mat3 world = translationMatrix(body->pos);
         glUniformMatrix3fv(gl->game.worldMatrixLocation, 1, true, world.c);
+
+        Animation * animation = entity->animation;
+        if(animation){
+            OpenglSprite * sprite = &animation->sprite;
+            f64 animProgress = animation->timer->progressNormalized;
+            {
+                i32 tile = CAST(i32, (animProgress * (sprite->framesTotal - 0.5f)));
+                i32 y = tile / sprite->framesX;
+                i32 x = tile % sprite->framesX;
+                ASSERT(x >= 0);
+                ASSERT(x < sprite->framesX);
+                ASSERT(y >= 0);
+                ASSERT(y < sprite->framesY);
+                glUniform2f(gl->game.textureOffsetLocation, CAST(f32, x)/sprite->framesX, CAST(f32, y)/sprite->framesY);
+            }
+            glUniform2f(gl->game.textureScaleLocation, 1.0f/sprite->framesX, 1.0f/sprite->framesY);
+            
+            glActiveTexture(GL_TEXTURE0 + 0);
+            glBindTexture(GL_TEXTURE_2D, sprite->textureId);
+        } 
+        else{
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
 
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
@@ -127,7 +144,7 @@ static inline void initGameRender() {
 		glGenBuffers(1, &gl->quad);
 		glBindBuffer(GL_ARRAY_BUFFER, gl->quad);
 		const f32 box[] = {
-			// triangle
+			// triangle strip
 			1, 0,// 0.0f, 1.0f,
 			0, 0,// 0.0f, 1.0f,
 			1, 1,// 0.0f, 1.0f,
@@ -176,7 +193,7 @@ inline void render(Game * state, f64 dt) {
 	// NOTE(fidli): gui calibrated to 1080p;
 	v2 resolutionScale = V2(platform->resolution.x / 1920.0f, platform->resolution.y / 1080.0f);
     f32 ditch = 10.0f;
-    mat3 projection = ortoProjectionMatrix(game->field->body.size + V2(ditch, ditch), platform->resolution);
+    mat3 projection = ortoProjectionMatrix(game->entities[0].body.size + V2(ditch, ditch), platform->resolution);
     glRenderGame(state, resolutionScale, &projection);
 
 	{//gui
@@ -257,7 +274,7 @@ inline void render(Game * state, f64 dt) {
 		GuiContainer* megaContainer = guiAddContainer(NULL, megaStyle, 0, 0, 0, megaHeight, &transparentContainer);
 
         char score[50] = {};
-        snprintf(score, ARRAYSIZE(score), "%hhu      %hhu", state->score1, state->score2);
+        snprintf(score, ARRAYSIZE(score), "%hhu      %hhu", state->entities[2].player.score, state->entities[3].player.score);
         guiRenderText(megaContainer, megaStyle, score, NULL, GuiJustify_Middle);
 
 
@@ -311,20 +328,20 @@ inline void render(Game * state, f64 dt) {
 	}
     glUseProgram(gl->hud.program);
 
-    if (length(state->ball->vel) == 0){
+    if (length(state->entities[1].vel) == 0){
         v2 scale = V2(8.0f/platform->resolution.x, 8.0f/platform->resolution.y);
         glUniform2f(gl->hud.scaleLocation, scale.x, scale.y);
 		v4 color = { 1, 1, 1, 1 };
 		glUniform4f(gl->hud.overlayColorLocation, color.x, color.y, color.z, color.w);
 
-        v2 screenPos = projection * (state->ball->body.pos + state->ball->dir);
+        v2 screenPos = projection * (state->entities[1].body.pos + state->entities[1].dir);
         glUniform2f(gl->hud.positionLocation, screenPos.x, screenPos.y);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
     
 	// cursor
 	{
-		glUniform2f(gl->hud.positionLocation, ((2 * state->input.mouse.pos.x) / CAST(f32, platform->resolution.x)) - 1, -(((2 * state->input.mouse.pos.y) / CAST(f32, platform->resolution.y)) - 1.0f));
+		glUniform2f(gl->hud.positionLocation, ((2 * state->entities[2].player.input.mouse.pos.x) / CAST(f32, platform->resolution.x)) - 1, -(((2 * state->entities[2].player.input.mouse.pos.y) / CAST(f32, platform->resolution.y)) - 1.0f));
 		v2 scale = V2(64.0f / (platform->resolution.x), 64.0f / (platform->resolution.y));
 		glUniform2f(gl->hud.scaleLocation, scale.x, -scale.y);
 

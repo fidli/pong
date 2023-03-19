@@ -48,6 +48,107 @@ struct Key{
     bool changed;
 } keys[256];
 
+struct OpenglSprite{
+    i32 framesX;
+    i32 framesY;
+    i32 framesTotal;
+
+    GLuint textureId;
+};
+
+struct Animation{
+    char name[50];
+    OpenglSprite sprite;
+    Timer * timer;
+};
+
+struct AnimationDesc{
+    const static i32 VERSION = 1;
+    char spriteFilename[255];
+    Animation animation;
+    f64 duration;
+};
+
+Animation animations[255];
+i32 animationCount = 0;
+
+bool parseAnimationDescFileLine(i32 fileVersion, u64 line, const char * option, const char * value, void ** context){
+    AnimationDesc * animationDesc = *(CAST(AnimationDesc**, context));
+    if(line == 1 && fileVersion != AnimationDesc::VERSION){
+        return false;
+    }
+    if (!strcmp(option, "file")){
+        strcpy(animationDesc->spriteFilename, value);
+        return true;
+    }
+    else if (!strcmp(option, "framesX")){
+        return sscanf(value, "%d", &animationDesc->animation.sprite.framesX) > 0;
+    }
+    else if (!strcmp(option, "framesY")){
+        return sscanf(value, "%d", &animationDesc->animation.sprite.framesY) > 0;
+    }
+    else if (!strcmp(option, "framesTotal")){
+        return sscanf(value, "%d", &animationDesc->animation.sprite.framesTotal) > 0;
+    }
+    else if (!strcmp(option, "duration")){
+        return sscanf(value, "%lf", &animationDesc->duration) > 0;
+    }
+    return false;
+}
+
+Animation * findAnimation(const char *name){
+    for(i32 i = 0; i < animationCount; i++){
+        if (strcmp(name, animations[i].name) == 0){
+            return &animations[i];
+        }
+    }
+    return NULL;
+}
+
+Animation * loadAnimation(const char * descFilePath){
+    PUSHI;
+    AnimationDesc desc = {};
+    bool r = loadConfig(descFilePath, parseAnimationDescFileLine, CAST(void*, &desc));
+    ASSERT(r);
+    
+    Animation * animation = &animations[animationCount++];
+    *animation = desc.animation;
+    strcpy(animation->name, filename(descFilePath));
+    *CAST(char*, extension(animation->name) - 1) = 0;
+    
+    FileContents imageFile = {};
+    char imagePath[255] = {};
+    strncpy(imagePath, descFilePath, filename(descFilePath) - descFilePath);
+    strcpy(imagePath + strlen(imagePath), desc.spriteFilename);
+    r &= readFile(imagePath, &imageFile);
+    ASSERT(r);
+    Image image;
+    r &= decodePNG(&imageFile, &image);
+    ASSERT(r);
+    ASSERT(image.info.interpretation == BitmapInterpretationType_RGBA || BitmapInterpretationType_RGB);
+    GLint interp = GL_RGBA;
+    if(image.info.interpretation == BitmapInterpretationType_RGBA){
+        interp = GL_RGBA;
+    }else if(image.info.interpretation == BitmapInterpretationType_RGB){
+        interp = GL_RGB;
+    }
+    else{
+        INV;
+    }
+    ASSERT(image.info.origin == BitmapOriginType_TopLeft);
+    animation->timer = addTimer(desc.duration);
+    OpenglSprite * sprite = &animation->sprite;
+    glGenTextures(1, &sprite->textureId);
+    glBindTexture(GL_TEXTURE_2D, sprite->textureId);
+    glTexImage2D(GL_TEXTURE_2D, 0, interp, image.info.width, image.info.height, 0, interp, GL_UNSIGNED_BYTE, image.data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    POPI;
+    return animation;
+}
+
 
 #include "game.cpp"
 
@@ -67,7 +168,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
             case WM_MOUSEMOVE:{
                 i16 x = CAST(i16, lParam);
                 i16 y = CAST(i16, lParam >> 16);
-                game->input.mouse.pos = DV2(x, y);
+                game->entities[2].player.input.mouse.pos = DV2(x, y);
                 platform->mouseOut = false;
             }break;
             case WM_SIZING:{
@@ -98,6 +199,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
     }
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
+
 
 int main(LPWSTR * argvW, int argc) {
     (void)argvW;
@@ -296,6 +398,10 @@ int main(LPWSTR * argvW, int argc) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             POP;
         }
+        if(initSuccess){
+            loadAnimation("resources\\sprites\\pig-run.txt");
+            loadAnimation("resources\\sprites\\pig-idle.txt");
+        }
         bool r = compileShaders(___sources_opengl_shaders_game_vert, ___sources_opengl_shaders_game_vert_len, ___sources_opengl_shaders_game_frag, ___sources_opengl_shaders_game_frag_len, &gl->game.vertexShader, &gl->game.fragmentShader, &gl->game.program);
         ASSERT(r);
         r &= compileShaders(___sources_opengl_shaders_hud_vert, ___sources_opengl_shaders_hud_vert_len, ___sources_opengl_shaders_hud_frag, ___sources_opengl_shaders_hud_frag_len, &gl->hud.vertexShader, &gl->hud.fragmentShader, &gl->hud.program);
@@ -322,7 +428,9 @@ int main(LPWSTR * argvW, int argc) {
         gameInit(track);
 
         keymap[GameAction_Up].key = 0x57;
+        keymap[GameAction_Right].key = 0x44;
         keymap[GameAction_Down].key = 0x53;
+        keymap[GameAction_Left].key = 0x41;
         keymap[GameAction_Kick].key = 0x20;
 
         f64 currentTime = getProcessCurrentTime();
@@ -331,7 +439,7 @@ int main(LPWSTR * argvW, int argc) {
         platform->frameIndex = 0;
 
         f64 accumulator = 0;
-        Timer * fpsTimer = platformGetTimer(platformAddTimer(1));
+        Timer * fpsTimer = addTimer(1);
         u64 lastFpsFrameIndex = 0;
         bool wasShowProfile = platform->showProfile;
         //THE GAME LOOP
@@ -354,9 +462,9 @@ int main(LPWSTR * argvW, int argc) {
             //END OF HOTLOADING
             
             //HANDLE INPUT
-            auto prevMouse = game->input.mouse;
-            game->input = {};
-            game->input.mouse = prevMouse;
+            auto prevMouse = game->entities[2].player.input.mouse;
+            game->entities[2].player.input = {};
+            game->entities[2].player.input.mouse = prevMouse;
             MSG msg;
             while(PeekMessage(&msg, window, 0, 0, PM_REMOVE))
             {
@@ -394,16 +502,7 @@ int main(LPWSTR * argvW, int argc) {
             //
             
             // advance timers
-            for(i32 i = 0; i < platform->timersCount; i++){
-                Timer * t = &platform->timers[i];
-                t->progressAbsolute += frameTime;
-                t->ticked = false;
-                while(t->progressAbsolute > t->period){
-                    t->progressAbsolute -= t->period;
-                    t->ticked = true;
-                }
-                t->progressNormalized = t->progressAbsolute / t->period;
-            }
+            advanceTimers(frameTime);
             platform->frameIndex++;
             platform->framesRenderedSinceLastProfileClear++;
         }

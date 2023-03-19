@@ -9,7 +9,7 @@ smooth out vec2 surfaceLocation;
 
 void main()
 {
-    surfaceLocation = model;
+    surfaceLocation = vec2(model.x, 1-model.y);
 
     vec3 localLoc = modelMatrix * vec3(model, 1);
     vec3 worldLoc = worldMatrix *  vec3(localLoc.xy, 1);
