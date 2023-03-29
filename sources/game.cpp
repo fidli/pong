@@ -31,9 +31,6 @@ struct Entity {
     f32 mass;
 
     v2 vel;
-    v2 dir;
-    f32 yRotationDeg;
-
     CollisionRect body;
 
     Animation * animation;
@@ -44,9 +41,13 @@ struct Entity {
             u8 score;
             u32 action;
             PlayerInput input;
+            v2 dir;
+            v2 wantDir;
+            f32 rotationYRad;
+            f32 angularVel;
         } player;
         struct {
-            f64 dirAccumulator;
+            v2 dir;
         } ball;
     };
     
@@ -68,22 +69,31 @@ extern Game * game;
 
 void gameInit(AudioTrack track){
 
-    game->entities[2].animation = game->entities[3].animation = findAnimation("pig-idle");
     game->entities[0].body.size = V2(170.0f, 90.0f);
     game->entities[0].body.pos = V2(0.0f, 0.0f);
 
     game->entities[2].body.size = V2(6.0f, 6.0f);
     game->entities[2].body.pos = game->entities[0].body.pos + V2(-game->entities[0].body.size.x/2 + game->entities[2].body.size.x/2.0f, 0);
     game->entities[2].mass = 80.0f;
-    game->entities[2].yRotationDeg = 180.0f;
+    game->entities[2].player.dir = V2(1.0f, 0);
+    game->entities[2].player.wantDir = game->entities[2].player.dir;
+    game->entities[2].player.rotationYRad = degToRad(180);
+    
+    
 
     game->entities[3].body.size = V2(6.0f, 6.0f);
     game->entities[3].body.pos = game->entities[0].body.pos + V2(game->entities[0].body.size.x/2, 0) - game->entities[3].body.size/2.0f;
     game->entities[3].mass = 80.0f;
+    game->entities[3].player.dir = V2(-1.0f, 0);
+    game->entities[3].player.rotationYRad = degToRad(0);
+    game->entities[3].player.wantDir = game->entities[3].player.dir;
+    game->entities[2].animation = game->entities[3].animation = findAnimation("pig-idle");
 
     game->entities[1].body.size = V2(1.0f, 1.0f);
-    game->entities[1].body.pos = -game->entities[1].body.size/2.0f;
-    game->entities[1].dir = V2(1.75f, -2.0f);
+    game->entities[1].body.pos = game->entities[2].body.pos + game->entities[2].player.dir * ((length(game->entities[2].body.size) + length(game->entities[1].body.size))/2.0f);
+    game->entities[1].ball.dir = game->entities[2].player.dir;
+    game->entities[1].vel = V2(0, 0);
+    game->entities[1].mass = 5.0f;
 
     game->boundaries[0].size = V2(game->entities[0].body.size.x, 1.0f);
     game->boundaries[0].pos = game->entities[0].body.pos + V2(0, game->entities[0].body.size.y/2 + game->boundaries[0].size.y/2.0f);
@@ -180,38 +190,58 @@ void gameFixedStep(f64 dt){
         game->aiCurrentStep++;
     }
 
-    game->entities[1].ball.dirAccumulator += dt;
-    if(length(game->entities[1].vel) == 0)
-    {
-        f32 coef = CAST(f32, ABS(fmod64(game->entities[1].ball.dirAccumulator, 2.0f)-1.0f));
-        v2 start = V2(1.75f, -2.0f);
-        v2 end = V2(1.75f, 2.0f);
-        ASSERT(coef >= 0 && coef <= 1.0f);
-        game->entities[1].dir = slerp(&end, &start, coef);
-    }
     
-    v2 playerForces = {0};
     f32 playerForceSize = 40000.0f;
+    v2 playerDir = V2(0.0f, 0.0f);
     if (game->entities[2].player.action & (1 << GameAction_Up))
     {
-           playerForces += V2(0.0f, 1.0f); 
+           playerDir += V2(0.0f, 1.0f);
     }
     if (game->entities[2].player.action & (1 << GameAction_Right))
     {
-           playerForces += V2(1.0f, 0.0f); 
+           playerDir += V2(1.0f, 0.0f);
+           game->entities[2].player.rotationYRad = degToRad(180);
     }
     if (game->entities[2].player.action & (1 << GameAction_Down))
     {
-           playerForces += V2(0.0f, -1.0f); 
+           playerDir += V2(0.0f, -1.0f);
     }
     if (game->entities[2].player.action & (1 << GameAction_Left))
     {
-           playerForces += V2(-1.0f, 0.0f); 
+           playerDir += V2(-1.0f, 0.0f);
+           game->entities[2].player.rotationYRad = degToRad(0);
     }
-    if (length(playerForces) > 0){
-        playerForces = normalize(playerForces) * playerForceSize;
+    v2 playerForces = {};
+    if (length(playerDir) > 0){
+        v2 dir = normalize(playerDir);
+        game->entities[2].player.wantDir = dir;
+        playerForces = dir * playerForceSize;
         game->entities[2].animation = findAnimation("pig-run");
     }
+
+    if (dot(game->entities[2].player.dir, game->entities[2].player.wantDir) != 1.0f)
+    {
+        f32 speedDir = cross(game->entities[2].player.dir, game->entities[2].player.wantDir).z;
+        if (speedDir == 0.0f){
+            speedDir = 1.0f;
+        }else{
+            speedDir = speedDir/ABS(speedDir);
+        }
+        f32 playerForceAngularSize = playerForceSize;
+        f32 angularAcc = playerForceAngularSize / game->entities[1].mass;
+        game->entities[2].player.angularVel += angularAcc*CAST(f32, dt);
+        game->entities[2].player.angularVel = clamp(game->entities[2].player.angularVel, 0.0f, 4.0f*PI);
+        f32 advance = fmod(game->entities[2].player.angularVel * CAST(f32, dt), 2.0f*PI);
+        v2 newDir = rotate(game->entities[2].player.dir, speedDir*advance);
+        f32 newSpeedDir = cross(newDir, game->entities[2].player.wantDir).z;
+        if(newSpeedDir * speedDir <= 0.0f){
+            game->entities[2].player.dir = game->entities[2].player.wantDir;
+            game->entities[2].player.angularVel = 0;
+        }else{
+            game->entities[2].player.dir = newDir;
+        }
+    }
+    
 
     f32 g = 10.0; // m / s^2
     f32 grassFrictionCoef = 10.0f;
@@ -232,7 +262,6 @@ void gameFixedStep(f64 dt){
     if (length(game->entities[2].vel) > maxVel){
         game->entities[2].vel = normalize(game->entities[2].vel) * maxVel;
     }
-    bool didCollide = collide(game->entities[2].body, game->boundaries[0]);
     game->entities[2].body.pos += game->entities[2].vel * CAST(f32, dt);
     game->entities[3].body.pos += game->entities[3].vel * CAST(f32, dt);
 
@@ -256,6 +285,10 @@ void gameFixedStep(f64 dt){
             bounces--;
         }while(bounces && retest);
     }
+    if(length(game->entities[1].vel) == 0)
+    {
+        game->entities[1].body.pos = game->entities[2].body.pos + game->entities[2].player.dir * ((length(game->entities[2].body.size) + length(game->entities[1].body.size))/2.0f);
+    }
 
     f32 ballWeight = 1.0; // kG
     f32 FnBall = ballWeight * g;
@@ -265,14 +298,15 @@ void gameFixedStep(f64 dt){
     if ((game->entities[2].player.action & (1 << GameAction_Kick)) && length(game->entities[1].vel) == 0.0f){
         f32 force = 50000.0f;
         ballAcc = force  / ballWeight;
-        game->entities[1].ball.dirAccumulator = 0;
+        game->entities[1].ball.dir = game->entities[2].player.dir;
     }
 
     ballAcc -= FfrictionBall / ballWeight;
     if ((game->entities[2].player.action & (1 << GameAction_Kick)) && length(game->entities[1].vel) == 0.0f){
-        game->entities[1].vel = ballAcc * CAST(f32, INSTANT_DURATION) * normalize(game->entities[1].dir);
+        game->entities[1].vel = ballAcc * CAST(f32, INSTANT_DURATION) * normalize(game->entities[1].ball.dir) + oldVelocity*CAST(f32, dt);
+        game->entities[2].vel = V2(0,0);
     }else{
-        v2 newVel = game->entities[1].vel + ballAcc * CAST(f32, dt) * normalize(game->entities[1].dir);
+        v2 newVel = game->entities[1].vel + ballAcc * CAST(f32, dt) * normalize(game->entities[1].ball.dir);
         if(dot(newVel, game->entities[1].vel) > 0){
             game->entities[1].vel = newVel;
         }
@@ -336,7 +370,14 @@ Game gameInterpolateSteps(Game * from, Game * to, f32 t)
     // 0 is field, no need to lerp/slepr
     for (i32 i = 1; i < ARRAYSIZE(game->entities); i++){
         result.entities[i].body.pos = lerp(&from->entities[i].body.pos, &to->entities[i].body.pos, t);
-        result.entities[i].dir = slerp(&from->entities[i].dir, &to->entities[i].dir, t);
+        if (i == 1)
+        {
+            result.entities[i].ball.dir = slerp(&from->entities[i].ball.dir, &to->entities[i].ball.dir, t);
+        }
+        else if (i == 2 || i == 3)
+        {
+            result.entities[i].player.dir = slerp(&from->entities[i].player.dir, &to->entities[i].player.dir, t);
+        }
     }
 
     return result;

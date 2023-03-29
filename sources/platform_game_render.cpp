@@ -76,7 +76,10 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
         glUniform4f(gl->game.overlayColorLocation, entity->overlayColor.x, entity->overlayColor.y, entity->overlayColor.z, entity->overlayColor.w);
 
         CollisionRect * body = &entity->body;
-        mat3 model = rotationYMatrix3(degToRad(entity->yRotationDeg)) * scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
+        mat3 model =  scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
+        if (i == 2 || i == 3){
+            model = rotationYMatrix3(entity->player.rotationYRad) * model;
+        }
         glUniformMatrix3fv(gl->game.modelMatrixLocation, 1, true, model.c);
 
         mat3 world = translationMatrix(body->pos);
@@ -328,17 +331,6 @@ inline void render(Game * state, f64 dt) {
 	}
     glUseProgram(gl->hud.program);
 
-    if (length(state->entities[1].vel) == 0){
-        v2 scale = V2(8.0f/platform->resolution.x, 8.0f/platform->resolution.y);
-        glUniform2f(gl->hud.scaleLocation, scale.x, scale.y);
-		v4 color = { 1, 1, 1, 1 };
-		glUniform4f(gl->hud.overlayColorLocation, color.x, color.y, color.z, color.w);
-
-        v2 screenPos = projection * (state->entities[1].body.pos + state->entities[1].dir);
-        glUniform2f(gl->hud.positionLocation, screenPos.x, screenPos.y);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    }
-    
 	// cursor
 	{
 		glUniform2f(gl->hud.positionLocation, ((2 * state->entities[2].player.input.mouse.pos.x) / CAST(f32, platform->resolution.x)) - 1, -(((2 * state->entities[2].player.input.mouse.pos.y) / CAST(f32, platform->resolution.y)) - 1.0f));
