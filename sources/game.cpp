@@ -303,8 +303,7 @@ void gameFixedStep(f64 dt){
 
     ballAcc -= FfrictionBall / ballWeight;
     if ((game->entities[2].player.action & (1 << GameAction_Kick)) && length(game->entities[1].vel) == 0.0f){
-        game->entities[1].vel = ballAcc * CAST(f32, INSTANT_DURATION) * normalize(game->entities[1].ball.dir) + oldVelocity*CAST(f32, dt);
-        game->entities[2].vel = V2(0,0);
+        game->entities[1].vel = ((ballAcc * normalize(game->entities[1].ball.dir)) + acc) * CAST(f32, INSTANT_DURATION) + oldVelocity;
     }else{
         v2 newVel = game->entities[1].vel + ballAcc * CAST(f32, dt) * normalize(game->entities[1].ball.dir);
         if(dot(newVel, game->entities[1].vel) > 0){
@@ -316,26 +315,32 @@ void gameFixedStep(f64 dt){
     }
 
     
+    static int b = 0;
     if (length(game->entities[1].vel) > 0){
-        v2 currentBallDir = normalize(game->entities[1].vel);
-        Entity currentBall = game->entities[1];
 
+        Entity currentBall = game->entities[1];
         f32 remainAdvance = length(game->entities[1].vel)*CAST(f32, dt);
         i32 bounces = 5;
         CollisionRect * bouncers[4] = {&game->boundaries[0], &game->boundaries[2], &game->entities[2].body, &game->entities[3].body};
         do{
             Entity newBall = currentBall;
-            newBall.body.pos += currentBallDir*remainAdvance;
+            newBall.body.pos += currentBall.ball.dir*remainAdvance;
             bool collision = false;
             for(i32 i = 0; i < ARRAYSIZE(bouncers) && !collision; i++){
                 if (collide(newBall.body, *bouncers[i])){
+                    if (b == 1)
+                            {
+                    collide(newBall.body, *bouncers[i]);
+                    }
                     collision = true;
-                    v2 pop = collidePop(newBall.body, *bouncers[i], -(currentBallDir*remainAdvance));
-                    currentBallDir = collideReflect(newBall.body, *bouncers[i], currentBallDir);
-                    currentBall.body.pos += pop;
+                    v2 pop = collidePop(newBall.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
+                    currentBall.body.pos = newBall.body.pos + pop;
+                    currentBall.ball.dir = collideReflect(currentBall.body, *bouncers[i], currentBall.ball.dir);
+                    ASSERT(!collide(currentBall.body, *bouncers[i]));
                     remainAdvance = length(pop);
                     bounces--;
                     playAudio(&game->track);
+                    b++;
                 }
             }
             if (!collision){
@@ -359,7 +364,7 @@ void gameFixedStep(f64 dt){
         } while (remainAdvance >= 0.0000005f && bounces > 0);
         ASSERT(remainAdvance <= 0.0000005f);
         game->entities[1] = currentBall;
-        game->entities[1].vel = currentBallDir * length(game->entities[1].vel);
+        game->entities[1].vel = currentBall.ball.dir * length(game->entities[1].vel);
     }
 }
 
