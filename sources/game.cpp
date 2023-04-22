@@ -262,28 +262,29 @@ void gameFixedStep(f64 dt){
     if (length(game->entities[2].vel) > maxVel){
         game->entities[2].vel = normalize(game->entities[2].vel) * maxVel;
     }
-    game->entities[2].body.pos += game->entities[2].vel * CAST(f32, dt);
-    game->entities[3].body.pos += game->entities[3].vel * CAST(f32, dt);
 
     for(i32 pi = 2; pi <= 3; pi++)
     {
-        i32 bounces = 1;
+        i32 bounces = 5;
         bool retest = false;
         v2 intoDirection = game->entities[pi].vel;
+        f32 remainAdvance = CAST(f32, dt); 
         do{
+            game->entities[pi].body.pos += intoDirection * remainAdvance;
             retest = false;
             for(i32 bi = 0; bi < ARRAYSIZE(game->boundaries) && !retest; bi++)
             {
                 if (collide(game->entities[pi].body, game->boundaries[bi])){
                     intoDirection = collidePop(game->entities[pi].body, game->boundaries[bi], -intoDirection);
                     game->entities[pi].body.pos += intoDirection;
-                    ASSERT(!collide(game->entities[pi].body, game->boundaries[bi]));
-                    game->entities[pi].vel = V2(0, 0);
+                    intoDirection = collideSlide(game->entities[pi].body, game->boundaries[bi], -1*intoDirection);
+                    remainAdvance = 1;
+                    // TODO iterative
                     retest = true;
                 }
             }
             bounces--;
-        }while(bounces && retest);
+        }while(bounces && retest && length(intoDirection) > 0.005f);
     }
     if(length(game->entities[1].vel) == 0)
     {
@@ -315,7 +316,6 @@ void gameFixedStep(f64 dt){
     }
 
     
-    static int b = 0;
     if (length(game->entities[1].vel) > 0){
 
         Entity currentBall = game->entities[1];
@@ -328,10 +328,6 @@ void gameFixedStep(f64 dt){
             bool collision = false;
             for(i32 i = 0; i < ARRAYSIZE(bouncers) && !collision; i++){
                 if (collide(newBall.body, *bouncers[i])){
-                    if (b == 1)
-                            {
-                    collide(newBall.body, *bouncers[i]);
-                    }
                     collision = true;
                     v2 pop = collidePop(newBall.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
                     currentBall.body.pos = newBall.body.pos + pop;
@@ -340,7 +336,6 @@ void gameFixedStep(f64 dt){
                     remainAdvance = length(pop);
                     bounces--;
                     playAudio(&game->track);
-                    b++;
                 }
             }
             if (!collision){
