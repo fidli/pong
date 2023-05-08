@@ -48,6 +48,7 @@ struct Entity {
         } player;
         struct {
             v2 dir;
+            v2 acc;
         } ball;
     };
     
@@ -279,7 +280,6 @@ void gameFixedStep(f64 dt){
                     game->entities[pi].body.pos += intoDirection;
                     intoDirection = collideSlide(game->entities[pi].body, game->boundaries[bi], -1*intoDirection);
                     remainAdvance = 1;
-                    // TODO iterative
                     retest = true;
                 }
             }
@@ -294,30 +294,26 @@ void gameFixedStep(f64 dt){
     f32 ballWeight = 1.0; // kG
     f32 FnBall = ballWeight * g;
     f32 FfrictionBall = 0 * 0.08f * FnBall;
-
-    f32 ballAcc = 0.0f;
-    if ((game->entities[2].player.action & (1 << GameAction_Kick)) && length(game->entities[1].vel) == 0.0f){
+    game->entities[1].ball.acc -= normalize(game->entities[1].ball.dir)*(FfrictionBall / ballWeight);
+    if((game->entities[2].player.action & (1 << GameAction_Kick)) && length(game->entities[1].vel) == 0.0f)
+    {
         f32 force = 50000.0f;
-        ballAcc = force  / ballWeight;
         game->entities[1].ball.dir = game->entities[2].player.dir;
-    }
-
-    ballAcc -= FfrictionBall / ballWeight;
-    if ((game->entities[2].player.action & (1 << GameAction_Kick)) && length(game->entities[1].vel) == 0.0f){
-        game->entities[1].vel = ((ballAcc * normalize(game->entities[1].ball.dir)) + acc) * CAST(f32, INSTANT_DURATION) + oldVelocity;
+        game->entities[1].ball.acc += (force  / ballWeight)*normalize(game->entities[1].ball.dir);
+        game->entities[1].vel = (game->entities[1].ball.acc + acc) * CAST(f32, INSTANT_DURATION) + game->entities[2].vel;
     }else{
-        v2 newVel = game->entities[1].vel + ballAcc * CAST(f32, dt) * normalize(game->entities[1].ball.dir);
+        v2 newVel = game->entities[1].vel + game->entities[1].ball.acc * CAST(f32, dt);
         if(dot(newVel, game->entities[1].vel) > 0){
             game->entities[1].vel = newVel;
+            game->entities[1].ball.dir = normalize(newVel);
         }
         else{
             game->entities[1].vel = V2(0, 0);
         }
     }
-
+    game->entities[1].ball.acc = V2(0, 0);
     
     if (length(game->entities[1].vel) > 0){
-
         Entity currentBall = game->entities[1];
         f32 remainAdvance = length(game->entities[1].vel)*CAST(f32, dt);
         i32 bounces = 5;
@@ -336,6 +332,10 @@ void gameFixedStep(f64 dt){
                     remainAdvance = length(pop);
                     bounces--;
                     playAudio(&game->track);
+                    if (i >= 2){
+                        // this is player bounce, indices match by accident
+                        currentBall.ball.acc = game->entities[i].vel/CAST(f32, dt);
+                    }
                 }
             }
             if (!collision){
