@@ -172,7 +172,7 @@ static inline void initGameRender() {
 
 inline void render(Game * state, f64 dt) {
     (void)dt;
-	PROFILE_SCOPE(render);
+	PROFILE_FUNC;
 	glClearColor(0, 0, 0, 1);
 	glClearDepth(0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -200,7 +200,7 @@ inline void render(Game * state, f64 dt) {
     glRenderGame(state, resolutionScale, &projection);
 
 	{//gui
-		PROFILE_SCOPE(GUI);
+		PROFILE_SCOPE("GUI");
 		PUSHI;
 		guiBegin(platform->resolution.x, platform->resolution.y);
 		GuiStyle* style = &PUSH(GuiStyle);
@@ -282,7 +282,7 @@ inline void render(Game * state, f64 dt) {
 
 
 		if (platform->showProfile) {
-			PROFILE_START(profile);
+			PROFILE_START("profile");
 			ProfileStats* stats = getCurrentProfileStats();
 			GuiStyle* profileStyle = &PUSH(GuiStyle);
 			*profileStyle = *style;
@@ -304,11 +304,12 @@ inline void render(Game * state, f64 dt) {
 			for (i32 i = 0; i < stats->count; i++) {
 				ProfileStats::Entry* entry = &stats->entries[i];
 				f32 callsPerFrame = CAST(f32, entry->totalCount) / (platform->framesRenderedSinceLastProfileClear + 1);
-				snprintf(line, 255, "%-30s %-13.2lf %-15.1f %-10.1f", entry->name, entry->avgTime * 1000, callsPerFrame, entry->avgTime * 1000 * callsPerFrame);
+                f64 avgTime = entry->totalTime / entry->totalCount;
+				snprintf(line, 255, "%-30s %-13.2lf %-15.1f %-10.1f", entry->name, avgTime * 1000, callsPerFrame, avgTime * 1000 * callsPerFrame);
 				guiRenderBoxText(profileContainer, profileStyle, line);
 				guiEndline(profileContainer, profileStyle);
 			}
-			PROFILE_END(profile);
+			PROFILE_END();
 		}
 		// status bar
 		{

@@ -1,6 +1,8 @@
 #include "platform/windows_nocrt.h"
 #include <Windows.h>
 #include <dwmapi.h>
+#define DIRECTINPUT_VERSION 0x0800
+#include <Dinput.h>
 #include "platform/windows_types.h"
 #define FIXED_STEP 0.0166666666666
 
@@ -106,6 +108,7 @@ Animation * findAnimation(const char *name){
 }
 
 Animation * loadAnimation(const char * descFilePath){
+    PROFILE_FUNC;
     PUSHI;
     AnimationDesc desc = {};
     bool r = loadConfig(descFilePath, parseAnimationDescFileLine, CAST(void*, &desc));
@@ -200,6 +203,35 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
 
+struct Controller{
+    GUID winId;
+    LPDIRECTINPUTDEVICE8A dev;
+    char name[50];
+
+    struct {
+        char name[50];
+    } buttons[50];
+    i32 buttonsCount;
+} controller;
+
+BOOL DIEnumDevicesCallback(LPCDIDEVICEINSTANCE lpddi, LPVOID pvRef)
+{
+    controller.winId = lpddi->guidInstance;
+    strncpy(controller.name, lpddi->tszInstanceName, ARRAYSIZE(controller.name));
+    return DIENUM_CONTINUE;
+}
+
+BOOL DIEnumDeviceObjectsCallback(LPCDIDEVICEOBJECTINSTANCE lpddoi, LPVOID pvRef)
+{
+    strncpy(controller.buttons[controller.buttonsCount].name, lpddoi->tszName, ARRAYSIZE(controller.buttons[controller.buttonsCount].name));
+    controller.buttonsCount++;
+    return DIENUM_CONTINUE;
+}
+
+BOOL DIEnumEffectsCallback(LPCDIEFFECTINFO pdei, LPVOID pvRef)
+{
+    return DIENUM_CONTINUE;
+}
 
 int main(LPWSTR * argvW, int argc) {
     (void)argvW;
@@ -249,8 +281,8 @@ int main(LPWSTR * argvW, int argc) {
             }
         }
 
-        bool initSuccess = initLog();
-        initSuccess &= createStatusLogger("default", LogLevel_Notice);
+        bool initSuccess = initIo();
+        initSuccess &= initLog();
         if(!initSuccess){
             VirtualFree(memoryStart, 0, MEM_RELEASE);
             return 1;
@@ -262,11 +294,9 @@ int main(LPWSTR * argvW, int argc) {
         gl = &PPUSH(OpenGL);
         
         //modules initalization
-        initSuccess &= initSuccess && initTime();
+        initSuccess = initSuccess && initTime();
         LOG(default, startup, "Init time success: %u", initSuccess);
-        initSuccess &= initSuccess && initProfile();
-        LOG(default, startup, "Init profile success: %u", initSuccess);
-        initSuccess &= initSuccess & initOpenGL();
+        initSuccess = initSuccess && initOpenGL();
         LOG(default, startup, "Init opengl success: %u", initSuccess);
         //creating window
         WNDCLASSEX style = {};
@@ -400,6 +430,8 @@ int main(LPWSTR * argvW, int argc) {
         }
         if(initSuccess){
             loadAnimation("resources\\sprites\\pig-run.txt");
+            printCurrentProfileStats();
+            return 0;
             loadAnimation("resources\\sprites\\pig-idle.txt");
         }
         bool r = compileShaders(___sources_opengl_shaders_game_vert, ___sources_opengl_shaders_game_vert_len, ___sources_opengl_shaders_game_frag, ___sources_opengl_shaders_game_frag_len, &gl->game.vertexShader, &gl->game.fragmentShader, &gl->game.program);
@@ -432,6 +464,23 @@ int main(LPWSTR * argvW, int argc) {
         keymap[GameAction_Down].key = 0x53;
         keymap[GameAction_Left].key = 0x41;
         keymap[GameAction_Kick].key = 0x20;
+
+        IDirectInput8 * out = NULL;
+        HRESULT hr = DirectInput8Create(hInstance, DIRECTINPUT_VERSION, IID_IDirectInput8, CAST(LPVOID*, &out), NULL);
+        ASSERT(hr == DI_OK);
+        ASSERT(out != NULL);
+        hr = out->EnumDevices(DI8DEVCLASS_GAMECTRL, DIEnumDevicesCallback, NULL, DIEDFL_ATTACHEDONLY);
+        ASSERT(hr == DI_OK);
+        hr = out->CreateDevice(controller.winId, &controller.dev, NULL);
+        ASSERT(hr == DI_OK);
+        hr = controller.dev->EnumObjects(DIEnumDeviceObjectsCallback, NULL, DIDFT_ALL);
+        ASSERT(hr == DI_OK);
+        hr = controller.dev->EnumEffects(DIEnumEffectsCallback,NULL,DIEFT_ALL);
+        ASSERT(hr == DI_OK);
+        LOG(default, controller, "Controller: %s", controller.name);
+        for(i32 i = 0; i < controller.buttonsCount; i++){
+            LOG(default, controller, " - %s", controller.buttons[i].name);
+        }
 
         f64 currentTime = getProcessCurrentTime();
         platform->appRunning = true;
@@ -471,6 +520,8 @@ int main(LPWSTR * argvW, int argc) {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
+
+
             
             gameHandleInput();
             while(accumulator >= FIXED_STEP){
@@ -509,6 +560,9 @@ int main(LPWSTR * argvW, int argc) {
         LOG(default, common, "Quitting main loop");
         //END OF MAIN LOOP
 
+        controller.dev->Release();
+        out->Release();
+
         //shaders and stuff
         glDeleteShader(gl->game.fragmentShader);
         glDeleteShader(gl->game.vertexShader);
@@ -542,7 +596,7 @@ int main(LPWSTR * argvW, int argc) {
 /**
 This is the entry point
 */
-void __stdcall WinMainCRTStartup(){
+void __stdcall mainCRTStartup(){
     int argc = 0;
     LPWSTR * argv =  CommandLineToArgvW(GetCommandLineW(), &argc);
     hInstance = GetModuleHandle(NULL);
