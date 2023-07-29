@@ -282,7 +282,9 @@ inline void render(Game * state, f64 dt) {
 
 
 		if (platform->showProfile) {
-			PROFILE_START("profile");
+			PROFILE_SCOPE("profile");
+#if 0
+            // TODO re-do
 			ProfileStats* stats = getCurrentProfileStats();
 			GuiStyle* profileStyle = &PUSH(GuiStyle);
 			*profileStyle = *style;
@@ -309,7 +311,7 @@ inline void render(Game * state, f64 dt) {
 				guiRenderBoxText(profileContainer, profileStyle, line);
 				guiEndline(profileContainer, profileStyle);
 			}
-			PROFILE_END();
+#endif
 		}
 		// status bar
 		{

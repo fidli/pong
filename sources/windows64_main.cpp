@@ -12,6 +12,7 @@
 
 #include "common.h"
 #include "util_mem.h"
+#define PROFILE 1
 #include "util_profile.cpp"
 
 //NOTE(AK): this-app instance
@@ -203,6 +204,43 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
 
+enum ControllerObject{
+    ControllerObject_Invalid,
+
+    ControllerObject_Button,
+    ControllerObject_XAxis,
+    ControllerObject_YAxis,
+    ControllerObject_ZAxis,
+
+    ControllerObject_RxAxis,
+    ControllerObject_RyAxis,
+    ControllerObject_RzAxis,
+
+    ControllerObjectCount
+};
+
+const char * controllerObjToStr(ControllerObject type)
+{
+    switch(type){
+        case ControllerObject_Button:
+            return "Button";
+        case ControllerObject_XAxis:
+            return "X Axis";
+        case ControllerObject_YAxis:
+            return "Y Axis";
+        case ControllerObject_ZAxis:
+            return "Z Axis";
+        case ControllerObject_RxAxis:
+            return "Rotation X";
+        case ControllerObject_RyAxis:
+            return "Rotation Y";
+        case ControllerObject_RzAxis:
+            return "Rotation Z";
+        default:
+            return "Unknown";
+    }
+}
+
 struct Controller{
     GUID winId;
     LPDIRECTINPUTDEVICE8A dev;
@@ -210,6 +248,7 @@ struct Controller{
 
     struct {
         char name[50];
+        ControllerObject type;
     } buttons[50];
     i32 buttonsCount;
 } controller;
@@ -224,6 +263,33 @@ BOOL DIEnumDevicesCallback(LPCDIDEVICEINSTANCE lpddi, LPVOID pvRef)
 BOOL DIEnumDeviceObjectsCallback(LPCDIDEVICEOBJECTINSTANCE lpddoi, LPVOID pvRef)
 {
     strncpy(controller.buttons[controller.buttonsCount].name, lpddoi->tszName, ARRAYSIZE(controller.buttons[controller.buttonsCount].name));
+    ControllerObject type = ControllerObject_Invalid;
+    if (lpddoi->dwType & DIDFT_PSHBUTTON && lpddoi->guidType == GUID_Button){
+        type = ControllerObject_Button;
+    } else if (lpddoi->dwType & DIDFT_ABSAXIS){
+        if (lpddoi->guidType == GUID_XAxis){
+            type = ControllerObject_XAxis;
+        }
+        if (lpddoi->guidType == GUID_YAxis){
+            type = ControllerObject_YAxis;
+        }
+        if (lpddoi->guidType == GUID_ZAxis){
+            type = ControllerObject_ZAxis;
+        }
+        if (lpddoi->guidType == GUID_RxAxis){
+            type = ControllerObject_RxAxis;
+        }
+        if (lpddoi->guidType == GUID_RyAxis){
+            type = ControllerObject_RyAxis;
+        }
+        if (lpddoi->guidType == GUID_RzAxis){
+            type = ControllerObject_RzAxis;
+        }
+    }
+    if (type != ControllerObject_Invalid){
+        ASSERT((lpddoi->dwFlags & DIDOI_POLLED) == 0);
+    }
+    controller.buttons[controller.buttonsCount].type = type;
     controller.buttonsCount++;
     return DIENUM_CONTINUE;
 }
@@ -428,12 +494,16 @@ int main(LPWSTR * argvW, int argc) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             POP;
         }
+#if 0
         if(initSuccess){
+            profileBegin();
             loadAnimation("resources\\sprites\\pig-run.txt");
+            profileEnd();
             printCurrentProfileStats();
             return 0;
             loadAnimation("resources\\sprites\\pig-idle.txt");
         }
+#endif
         bool r = compileShaders(___sources_opengl_shaders_game_vert, ___sources_opengl_shaders_game_vert_len, ___sources_opengl_shaders_game_frag, ___sources_opengl_shaders_game_frag_len, &gl->game.vertexShader, &gl->game.fragmentShader, &gl->game.program);
         ASSERT(r);
         r &= compileShaders(___sources_opengl_shaders_hud_vert, ___sources_opengl_shaders_hud_vert_len, ___sources_opengl_shaders_hud_frag, ___sources_opengl_shaders_hud_frag_len, &gl->hud.vertexShader, &gl->hud.fragmentShader, &gl->hud.program);
@@ -479,8 +549,58 @@ int main(LPWSTR * argvW, int argc) {
         ASSERT(hr == DI_OK);
         LOG(default, controller, "Controller: %s", controller.name);
         for(i32 i = 0; i < controller.buttonsCount; i++){
-            LOG(default, controller, " - %s", controller.buttons[i].name);
+            LOG(default, controller, " - %s [%s]", controller.buttons[i].name, controllerObjToStr(controller.buttons[i].type));
         }
+        DIPROPDWORD val = {};
+        val.diph.dwSize = sizeof(DIPROPDWORD);
+        val.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+        val.diph.dwObj = 0;
+        val.diph.dwHow = DIPH_DEVICE;
+        val.dwData = MEGABYTE(1);
+        hr = controller.dev->SetProperty(DIPROP_BUFFERSIZE, CAST(DIPROPHEADER*, &val));
+        ASSERT(hr == DI_OK);
+
+        
+        DIOBJECTDATAFORMAT objs[1] = {};
+        objs[0].pguid = &GUID_XAxis; 
+        objs[0].dwOfs = 0; 
+        objs[0].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE;
+        /*
+        objs[1].pguid = &GUID_YAxis;
+        objs[1].dwOfs = 4; 
+        objs[1].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE;
+        */
+
+        DIDATAFORMAT objects = {};
+        objects.dwSize = sizeof(DIDATAFORMAT);
+        objects.dwObjSize = sizeof(DIOBJECTDATAFORMAT);
+        objects.dwFlags = DIDF_ABSAXIS;
+        objects.dwDataSize = 8;
+        objects.dwNumObjs = ARRAYSIZE(objs);
+        objects.rgodf = objs;
+        hr = controller.dev->SetDataFormat(&objects);
+        ASSERT(hr == DI_OK);
+
+       
+        hr = controller.dev->Acquire();
+        ASSERT(hr == DI_OK);
+        for(;;)
+        {
+            DIDEVICEOBJECTDATA data[10];
+            DWORD datasize = ARRAYSIZE(data);
+            hr = controller.dev->GetDeviceData(sizeof(DIDEVICEOBJECTDATA), data, &datasize, 0);
+            ASSERT(hr == DI_OK);
+            if (datasize > 0){
+
+            LOG(default, controller, "DATA START");
+            for (DWORD i = 0; i < datasize; i++){
+                LOG(default, controller, "%d %d %d", i, data[i].dwOfs, data[i].dwData);
+            }
+            LOG(default, controller, "DATA END");
+            }
+        }
+        hr = controller.dev->Unacquire();
+        ASSERT(hr == DI_OK);
 
         f64 currentTime = getProcessCurrentTime();
         platform->appRunning = true;
@@ -495,7 +615,6 @@ int main(LPWSTR * argvW, int argc) {
         Game previousState = *game;
         while (platform->appRunning) {
             if(!wasShowProfile && platform->showProfile){
-                profileClearStats();
                 platform->framesRenderedSinceLastProfileClear = 0;
             }
             wasShowProfile = platform->showProfile;
