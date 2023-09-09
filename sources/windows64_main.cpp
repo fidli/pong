@@ -51,6 +51,11 @@ struct Key{
     bool changed;
 } keys[256];
 
+struct{
+    f32 x;
+    f32 y;
+} joy;
+
 struct OpenglSprite{
     i32 framesX;
     i32 framesY;
@@ -249,6 +254,11 @@ struct Controller{
     struct {
         char name[50];
         ControllerObject type;
+        DWORD dwType;
+        GUID guidType;
+        i32 offset;
+        f32 min;
+        f32 max;
     } buttons[50];
     i32 buttonsCount;
 } controller;
@@ -290,6 +300,8 @@ BOOL DIEnumDeviceObjectsCallback(LPCDIDEVICEOBJECTINSTANCE lpddoi, LPVOID pvRef)
         ASSERT((lpddoi->dwFlags & DIDOI_POLLED) == 0);
     }
     controller.buttons[controller.buttonsCount].type = type;
+    controller.buttons[controller.buttonsCount].dwType = lpddoi->dwType;
+    controller.buttons[controller.buttonsCount].guidType = lpddoi->guidType;
     controller.buttonsCount++;
     return DIENUM_CONTINUE;
 }
@@ -362,6 +374,8 @@ int main(LPWSTR * argvW, int argc) {
         //modules initalization
         initSuccess = initSuccess && initTime();
         LOG(default, startup, "Init time success: %u", initSuccess);
+        initSuccess = initSuccess && initProfile();
+        LOG(default, startup, "Init profile success: %u", initSuccess);
         initSuccess = initSuccess && initOpenGL();
         LOG(default, startup, "Init opengl success: %u", initSuccess);
         //creating window
@@ -494,13 +508,18 @@ int main(LPWSTR * argvW, int argc) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             POP;
         }
-#if 0
+#if 1
         if(initSuccess){
             profileBegin();
             loadAnimation("resources\\sprites\\pig-run.txt");
             profileEnd();
             printCurrentProfileStats();
             return 0;
+            loadAnimation("resources\\sprites\\pig-idle.txt");
+        }
+#else        
+        if(initSuccess){
+            loadAnimation("resources\\sprites\\pig-run.txt");
             loadAnimation("resources\\sprites\\pig-idle.txt");
         }
 #endif
@@ -560,47 +579,53 @@ int main(LPWSTR * argvW, int argc) {
         hr = controller.dev->SetProperty(DIPROP_BUFFERSIZE, CAST(DIPROPHEADER*, &val));
         ASSERT(hr == DI_OK);
 
-        
-        DIOBJECTDATAFORMAT objs[1] = {};
-        objs[0].pguid = &GUID_XAxis; 
-        objs[0].dwOfs = 0; 
-        objs[0].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE;
-        /*
-        objs[1].pguid = &GUID_YAxis;
-        objs[1].dwOfs = 4; 
-        objs[1].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE;
-        */
+        i32 iWant = 2;
+        DIOBJECTDATAFORMAT objs[2] = {};
+
+        DIPROPRANGE range = {};
+        range.diph.dwSize = sizeof(DIPROPRANGE);
+        range.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+
+        i32 runningOffset = 0;
+        for (i32 i = 0; i < iWant; i++)
+        {
+            objs[i].pguid = &controller.buttons[i].guidType; 
+            objs[i].dwOfs = runningOffset; 
+            objs[i].dwType = controller.buttons[i].dwType;
+            switch(controller.buttons[i].type)
+            {
+                case ControllerObject_XAxis:
+                case ControllerObject_YAxis:
+                case ControllerObject_ZAxis:
+                case ControllerObject_RxAxis:
+                case ControllerObject_RyAxis:
+                case ControllerObject_RzAxis:
+                {
+                    range.diph.dwHow = DIPH_BYID;
+                    range.diph.dwObj = controller.buttons[i].dwType;
+                    hr = controller.dev->GetProperty(DIPROP_RANGE, CAST(DIPROPHEADER*, &range));
+                    ASSERT(hr == DI_OK);
+                    controller.buttons[i].min = CAST(f32, range.lMin);
+                    controller.buttons[i].max = CAST(f32, range.lMax);
+                    controller.buttons[i].offset = runningOffset;
+                    runningOffset += 4;
+                }break;
+                default:{
+                    INV;
+                }
+            }
+        }
 
         DIDATAFORMAT objects = {};
         objects.dwSize = sizeof(DIDATAFORMAT);
         objects.dwObjSize = sizeof(DIOBJECTDATAFORMAT);
         objects.dwFlags = DIDF_ABSAXIS;
-        objects.dwDataSize = 8;
+        objects.dwDataSize = runningOffset;
         objects.dwNumObjs = ARRAYSIZE(objs);
         objects.rgodf = objs;
         hr = controller.dev->SetDataFormat(&objects);
         ASSERT(hr == DI_OK);
 
-       
-        hr = controller.dev->Acquire();
-        ASSERT(hr == DI_OK);
-        for(;;)
-        {
-            DIDEVICEOBJECTDATA data[10];
-            DWORD datasize = ARRAYSIZE(data);
-            hr = controller.dev->GetDeviceData(sizeof(DIDEVICEOBJECTDATA), data, &datasize, 0);
-            ASSERT(hr == DI_OK);
-            if (datasize > 0){
-
-            LOG(default, controller, "DATA START");
-            for (DWORD i = 0; i < datasize; i++){
-                LOG(default, controller, "%d %d %d", i, data[i].dwOfs, data[i].dwData);
-            }
-            LOG(default, controller, "DATA END");
-            }
-        }
-        hr = controller.dev->Unacquire();
-        ASSERT(hr == DI_OK);
 
         f64 currentTime = getProcessCurrentTime();
         platform->appRunning = true;
@@ -613,6 +638,9 @@ int main(LPWSTR * argvW, int argc) {
         bool wasShowProfile = platform->showProfile;
         //THE GAME LOOP
         Game previousState = *game;
+        hr = controller.dev->Acquire();
+        ASSERT(hr == DI_OK);
+        DIDEVICEOBJECTDATA data[ARRAYSIZE(objs)];
         while (platform->appRunning) {
             if(!wasShowProfile && platform->showProfile){
                 platform->framesRenderedSinceLastProfileClear = 0;
@@ -640,7 +668,26 @@ int main(LPWSTR * argvW, int argc) {
                 DispatchMessage(&msg);
             }
 
-
+            DWORD datasize = ARRAYSIZE(data);
+            hr = controller.dev->GetDeviceData(sizeof(DIDEVICEOBJECTDATA), data, &datasize, 0);
+            ASSERT(hr == DI_OK);
+            for (DWORD i = 0; i < datasize; i++){
+                i32 b = -1;
+                for(i32 cb = 0; cb < controller.buttonsCount; i++){
+                }
+                ASSERT(b != -1);
+                // TODO dead zone, saturation, etc
+                f32 val = (2*((CAST(f32,data[i].dwData)-controller.buttons[b].min)/(controller.buttons[b].max-controller.buttons[b].min))) - 1;
+                if(data[i].dwOfs == 0)
+                {
+                    joy.x = val;
+                }else
+                {
+                    ASSERT(data[i].dwOfs == 4);
+                    // We want Y up
+                    joy.y = -val;
+                }
+            }
             
             gameHandleInput();
             while(accumulator >= FIXED_STEP){
@@ -676,6 +723,8 @@ int main(LPWSTR * argvW, int argc) {
             platform->frameIndex++;
             platform->framesRenderedSinceLastProfileClear++;
         }
+        hr = controller.dev->Unacquire();
+        ASSERT(hr == DI_OK);
         LOG(default, common, "Quitting main loop");
         //END OF MAIN LOOP
 
