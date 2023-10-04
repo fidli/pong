@@ -113,8 +113,24 @@ Animation * findAnimation(const char *name){
     return NULL;
 }
 
+void profileMemoryWrite(u8 * mem, nint size)
+{
+    for(nint i = 0; i < size; i++)
+    {
+        mem[i] = 1;
+    }
+}
+
+void profileMemoryRead(u8 * mem, nint size)
+{
+    for(nint i = 0; i < size; i++)
+    {
+        u8 val = mem[i];
+    }
+}
+
 Animation * loadAnimation(const char * descFilePath){
-    PROFILE_FUNC;
+    PROFILE_FUNC();
     PUSHI;
     AnimationDesc desc = {};
     bool r = loadConfig(descFilePath, parseAnimationDescFileLine, CAST(void*, &desc));
@@ -154,6 +170,12 @@ Animation * loadAnimation(const char * descFilePath){
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+#if PROFILE
+    u32 b = 0;
+    ASSERT(getFileSize(descFilePath, &b));
+    
+    PROFILE_BYTES(b + imageFile.size + image.info.totalSize);
+#endif
     POPI;
     return animation;
 }
@@ -508,13 +530,27 @@ int main(LPWSTR * argvW, int argc) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             POP;
         }
-#if 1
+#if PROFILE
         if(initSuccess){
+            nint size = MEGABYTE(3.95f);
+            nint size2 = 4950*9900*4;
+            ASSERT(size2 > size);
+            u8* mem = &PUSHA(u8, size2);
             profileBegin();
             loadAnimation("resources\\sprites\\pig-run.txt");
+            /*
+            profileMemoryWrite(mem, size);
+            profileMemoryRead(mem, size);
+            profileMemoryWrite(mem, size2);
+            {
+                PROFILE_SCOPE("mem ", size*2 + size2);
+                profileMemoryWrite(mem, size);
+                profileMemoryRead(mem, size);
+                profileMemoryWrite(mem, size2);
+            }
+            */
             profileEnd();
             printCurrentProfileStats();
-            return 0;
             loadAnimation("resources\\sprites\\pig-idle.txt");
         }
 #else        
@@ -671,9 +707,10 @@ int main(LPWSTR * argvW, int argc) {
             DWORD datasize = ARRAYSIZE(data);
             hr = controller.dev->GetDeviceData(sizeof(DIDEVICEOBJECTDATA), data, &datasize, 0);
             ASSERT(hr == DI_OK);
+            /*
             for (DWORD i = 0; i < datasize; i++){
                 i32 b = -1;
-                for(i32 cb = 0; cb < controller.buttonsCount; i++){
+                for(i32 cb = 0; cb < controller.buttonsCount; cb++){
                 }
                 ASSERT(b != -1);
                 // TODO dead zone, saturation, etc
@@ -688,6 +725,7 @@ int main(LPWSTR * argvW, int argc) {
                     joy.y = -val;
                 }
             }
+            */
             
             gameHandleInput();
             while(accumulator >= FIXED_STEP){

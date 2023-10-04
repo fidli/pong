@@ -172,7 +172,7 @@ static inline void initGameRender() {
 
 inline void render(Game * state, f64 dt) {
     (void)dt;
-	PROFILE_FUNC;
+	PROFILE_FUNC();
 	glClearColor(0, 0, 0, 1);
 	glClearDepth(0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
