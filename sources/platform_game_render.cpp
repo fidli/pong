@@ -67,6 +67,7 @@ static inline void initGameShader() {
 
 void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
     (void)resolutionScale;
+    (void)state;
 
     glUniformMatrix3fv(gl->game.projectionMatrixLocation, 1, true, projection->c);
 

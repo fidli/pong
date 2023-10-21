@@ -113,22 +113,6 @@ Animation * findAnimation(const char *name){
     return NULL;
 }
 
-void profileMemoryWrite(u8 * mem, nint size)
-{
-    for(nint i = 0; i < size; i++)
-    {
-        mem[i] = 1;
-    }
-}
-
-void profileMemoryRead(u8 * mem, nint size)
-{
-    for(nint i = 0; i < size; i++)
-    {
-        u8 val = mem[i];
-    }
-}
-
 Animation * loadAnimation(const char * descFilePath){
     PROFILE_FUNC();
     PUSHI;
@@ -287,6 +271,7 @@ struct Controller{
 
 BOOL DIEnumDevicesCallback(LPCDIDEVICEINSTANCE lpddi, LPVOID pvRef)
 {
+    (void) pvRef;
     controller.winId = lpddi->guidInstance;
     strncpy(controller.name, lpddi->tszInstanceName, ARRAYSIZE(controller.name));
     return DIENUM_CONTINUE;
@@ -294,6 +279,7 @@ BOOL DIEnumDevicesCallback(LPCDIDEVICEINSTANCE lpddi, LPVOID pvRef)
 
 BOOL DIEnumDeviceObjectsCallback(LPCDIDEVICEOBJECTINSTANCE lpddoi, LPVOID pvRef)
 {
+    (void) pvRef;
     strncpy(controller.buttons[controller.buttonsCount].name, lpddoi->tszName, ARRAYSIZE(controller.buttons[controller.buttonsCount].name));
     ControllerObject type = ControllerObject_Invalid;
     if (lpddoi->dwType & DIDFT_PSHBUTTON && lpddoi->guidType == GUID_Button){
@@ -330,6 +316,8 @@ BOOL DIEnumDeviceObjectsCallback(LPCDIDEVICEOBJECTINSTANCE lpddoi, LPVOID pvRef)
 
 BOOL DIEnumEffectsCallback(LPCDIEFFECTINFO pdei, LPVOID pvRef)
 {
+    (void) pvRef;
+    (void)pdei;
     return DIENUM_CONTINUE;
 }
 
@@ -532,10 +520,12 @@ int main(LPWSTR * argvW, int argc) {
         }
 #if PROFILE
         if(initSuccess){
+            /*
             nint size = MEGABYTE(3.95f);
             nint size2 = 4950*9900*4;
             ASSERT(size2 > size);
             u8* mem = &PUSHA(u8, size2);
+            */
             profileBegin();
             loadAnimation("resources\\sprites\\pig-run.txt");
             /*
@@ -572,12 +562,12 @@ int main(LPWSTR * argvW, int argc) {
         { // oink
             const char * fullPath = "resources\\audio\\oink.wav";
             u32 fileSize = 0;
-            bool r = getFileSize(fullPath, &fileSize);
+            r &= getFileSize(fullPath, &fileSize);
             ASSERT(r);
             FileContents audioFile = {};
             audioFile.size = fileSize;
             audioFile.contents = &PPUSHA(char, fileSize);
-            r = readFile(fullPath, &audioFile);
+            r &= readFile(fullPath, &audioFile);
             ASSERT(r);
             r &= decodeWAV(&audioFile, &track);
             ASSERT(r);
