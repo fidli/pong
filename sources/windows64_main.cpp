@@ -158,7 +158,7 @@ Animation * loadAnimation(const char * descFilePath){
     u32 b = 0;
     ASSERT(getFileSize(descFilePath, &b));
     
-    PROFILE_BYTES(b + imageFile.size + image.info.totalSize);
+    PROFILE_BYTES(b + imageFile.size);
 #endif
     POPI;
     return animation;
@@ -275,6 +275,27 @@ BOOL DIEnumDevicesCallback(LPCDIDEVICEINSTANCE lpddi, LPVOID pvRef)
     controller.winId = lpddi->guidInstance;
     strncpy(controller.name, lpddi->tszInstanceName, ARRAYSIZE(controller.name));
     return DIENUM_CONTINUE;
+}
+
+void profileMemoryWrite(u8 * mem, nint size)
+{
+    for(nint i = 0; i < size; i++)
+    {
+        mem[i] = 1;
+    }
+}
+
+void profileMemoryRead(u8 * mem, nint size)
+{
+    for(nint i = 0; i < size; i++)
+    {
+        u8 val = mem[i];
+    }
+}
+
+void profileMemcpy(u8 * mem, u8 * mem2, nint size)
+{
+    memcpy(mem, mem2, size);
 }
 
 BOOL DIEnumDeviceObjectsCallback(LPCDIDEVICEOBJECTINSTANCE lpddoi, LPVOID pvRef)
@@ -518,37 +539,10 @@ int main(LPWSTR * argvW, int argc) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             POP;
         }
-#if PROFILE
-        if(initSuccess){
-            /*
-            nint size = MEGABYTE(3.95f);
-            nint size2 = 4950*9900*4;
-            ASSERT(size2 > size);
-            u8* mem = &PUSHA(u8, size2);
-            */
-            profileBegin();
-            loadAnimation("resources\\sprites\\pig-run.txt");
-            /*
-            profileMemoryWrite(mem, size);
-            profileMemoryRead(mem, size);
-            profileMemoryWrite(mem, size2);
-            {
-                PROFILE_SCOPE("mem ", size*2 + size2);
-                profileMemoryWrite(mem, size);
-                profileMemoryRead(mem, size);
-                profileMemoryWrite(mem, size2);
-            }
-            */
-            profileEnd();
-            printCurrentProfileStats();
-            loadAnimation("resources\\sprites\\pig-idle.txt");
-        }
-#else        
         if(initSuccess){
             loadAnimation("resources\\sprites\\pig-run.txt");
             loadAnimation("resources\\sprites\\pig-idle.txt");
         }
-#endif
         bool r = compileShaders(___sources_opengl_shaders_game_vert, ___sources_opengl_shaders_game_vert_len, ___sources_opengl_shaders_game_frag, ___sources_opengl_shaders_game_frag_len, &gl->game.vertexShader, &gl->game.fragmentShader, &gl->game.program);
         ASSERT(r);
         r &= compileShaders(___sources_opengl_shaders_hud_vert, ___sources_opengl_shaders_hud_vert_len, ___sources_opengl_shaders_hud_frag, ___sources_opengl_shaders_hud_frag_len, &gl->hud.vertexShader, &gl->hud.fragmentShader, &gl->hud.program);
