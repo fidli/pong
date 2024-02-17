@@ -263,8 +263,12 @@ struct Controller{
         DWORD dwType;
         GUID guidType;
         i32 offset;
-        f32 min;
-        f32 max;
+        i32 min;
+        i32 max;
+        i32 center;
+        i32 deviation;
+        bool want;
+        
     } buttons[50];
     i32 buttonsCount;
 } controller;
@@ -598,6 +602,13 @@ int main(LPWSTR * argvW, int argc) {
         val.dwData = MEGABYTE(1);
         hr = controller.dev->SetProperty(DIPROP_BUFFERSIZE, CAST(DIPROPHEADER*, &val));
         ASSERT(hr == DI_OK);
+        val.dwData = 0;
+        hr = controller.dev->SetProperty(DIPROP_DEADZONE, CAST(DIPROPHEADER*, &val));
+        ASSERT(hr == DI_OK);
+        val.dwData = 10000;
+        hr = controller.dev->SetProperty(DIPROP_SATURATION, CAST(DIPROPHEADER*, &val));
+        ASSERT(hr == DI_OK);
+
 
         i32 iWant = 2;
         DIOBJECTDATAFORMAT objs[2] = {};
@@ -625,9 +636,12 @@ int main(LPWSTR * argvW, int argc) {
                     range.diph.dwObj = controller.buttons[i].dwType;
                     hr = controller.dev->GetProperty(DIPROP_RANGE, CAST(DIPROPHEADER*, &range));
                     ASSERT(hr == DI_OK);
-                    controller.buttons[i].min = CAST(f32, range.lMin);
-                    controller.buttons[i].max = CAST(f32, range.lMax);
+                    controller.buttons[i].min = range.lMin;
+                    controller.buttons[i].max = range.lMax;
+                    controller.buttons[i].center = (controller.buttons[i].max + controller.buttons[i].min) / 2;
+                    controller.buttons[i].deviation = MIN(controller.buttons[i].center - controller.buttons[i].min, controller.buttons[i].max - controller.buttons[i].center); 
                     controller.buttons[i].offset = runningOffset;
+                    controller.buttons[i].want = true;
                     runningOffset += 4;
                 }break;
                 default:{
@@ -646,6 +660,10 @@ int main(LPWSTR * argvW, int argc) {
         hr = controller.dev->SetDataFormat(&objects);
         ASSERT(hr == DI_OK);
 
+        DIDEVICEOBJECTDATA data[ARRAYSIZE(objs)];
+
+        hr = controller.dev->Acquire();
+        ASSERT(hr == DI_OK);
 
         f64 currentTime = getProcessCurrentTime();
         platform->appRunning = true;
@@ -658,9 +676,6 @@ int main(LPWSTR * argvW, int argc) {
         bool wasShowProfile = platform->showProfile;
         //THE GAME LOOP
         Game previousState = *game;
-        hr = controller.dev->Acquire();
-        ASSERT(hr == DI_OK);
-        DIDEVICEOBJECTDATA data[ARRAYSIZE(objs)];
         while (platform->appRunning) {
             if(!wasShowProfile && platform->showProfile){
                 platform->framesRenderedSinceLastProfileClear = 0;
@@ -691,25 +706,47 @@ int main(LPWSTR * argvW, int argc) {
             DWORD datasize = ARRAYSIZE(data);
             hr = controller.dev->GetDeviceData(sizeof(DIDEVICEOBJECTDATA), data, &datasize, 0);
             ASSERT(hr == DI_OK);
-            /*
             for (DWORD i = 0; i < datasize; i++){
                 i32 b = -1;
+
                 for(i32 cb = 0; cb < controller.buttonsCount; cb++){
+                    if (controller.buttons[cb].want && controller.buttons[cb].offset == data[i].dwOfs)
+                    {
+                        b = cb;
+                        break;
+                    }
                 }
                 ASSERT(b != -1);
-                // TODO dead zone, saturation, etc
-                f32 val = (2*((CAST(f32,data[i].dwData)-controller.buttons[b].min)/(controller.buttons[b].max-controller.buttons[b].min))) - 1;
+
+                i32 value = data[i].dwData - controller.buttons[b].center;
+                i32 deadzone = CAST(i32, 0.15f * controller.buttons[b].deviation);
+                i32 saturation = CAST(i32, 0.85f * controller.buttons[b].deviation);
+                if (value >= -deadzone && value <= deadzone)
+                {
+                    value = 0;
+                }
+                if (value <= -saturation)
+                {
+                    value = -controller.buttons[b].deviation;
+                }
+                if (value >= saturation)
+                {
+                    value = controller.buttons[b].deviation;
+                }
+
+                f32 val = CAST(f32, value) / CAST(f32, controller.buttons[b].deviation);
+                //f32 val = CAST(f32,data[i].dwData);
                 if(data[i].dwOfs == 0)
                 {
-                    joy.x = val;
+                    printf("val %f\n", val);
+                    // We want Y up
+                    joy.y = -val;
                 }else
                 {
                     ASSERT(data[i].dwOfs == 4);
-                    // We want Y up
-                    joy.y = -val;
+                    joy.x = val;
                 }
             }
-            */
             
             gameHandleInput();
             while(accumulator >= FIXED_STEP){
