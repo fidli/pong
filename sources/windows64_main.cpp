@@ -479,6 +479,7 @@ int main(LPWSTR * argvW, int argc) {
         controllerH.sequence = controllers[0].sequence;
 
         controllerInit = controllerInit && setUpAndUseController(&controllerH);
+        ASSERT(controllerInit);
 
         f64 currentTime = getProcessCurrentTime();
         platform->appRunning = true;
