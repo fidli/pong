@@ -1,8 +1,6 @@
 #include "platform/windows_nocrt.h"
 #include <Windows.h>
 #include <dwmapi.h>
-#define DIRECTINPUT_VERSION 0x0800
-#include <Dinput.h>
 #include "platform/windows_types.h"
 #define FIXED_STEP 0.0166666666666
 
@@ -30,6 +28,7 @@ HINSTANCE hInstance;
 HWND window;
 #include "platform/windows_imgui.cpp"
 #include "platform/windows_audio.cpp"
+#include "platform/windows_gamepad.cpp"
 
 //NOTE(AK): these are set after memory initialisation
 struct Platform;
@@ -215,71 +214,6 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
 
-enum ControllerObject{
-    ControllerObject_Invalid,
-
-    ControllerObject_Button,
-    ControllerObject_XAxis,
-    ControllerObject_YAxis,
-    ControllerObject_ZAxis,
-
-    ControllerObject_RxAxis,
-    ControllerObject_RyAxis,
-    ControllerObject_RzAxis,
-
-    ControllerObjectCount
-};
-
-const char * controllerObjToStr(ControllerObject type)
-{
-    switch(type){
-        case ControllerObject_Button:
-            return "Button";
-        case ControllerObject_XAxis:
-            return "X Axis";
-        case ControllerObject_YAxis:
-            return "Y Axis";
-        case ControllerObject_ZAxis:
-            return "Z Axis";
-        case ControllerObject_RxAxis:
-            return "Rotation X";
-        case ControllerObject_RyAxis:
-            return "Rotation Y";
-        case ControllerObject_RzAxis:
-            return "Rotation Z";
-        default:
-            return "Unknown";
-    }
-}
-
-struct Controller{
-    GUID winId;
-    LPDIRECTINPUTDEVICE8A dev;
-    char name[50];
-
-    struct {
-        char name[50];
-        ControllerObject type;
-        DWORD dwType;
-        GUID guidType;
-        i32 offset;
-        i32 min;
-        i32 max;
-        i32 center;
-        i32 deviation;
-        bool want;
-        
-    } buttons[50];
-    i32 buttonsCount;
-} controller;
-
-BOOL DIEnumDevicesCallback(LPCDIDEVICEINSTANCE lpddi, LPVOID pvRef)
-{
-    (void) pvRef;
-    controller.winId = lpddi->guidInstance;
-    strncpy(controller.name, lpddi->tszInstanceName, ARRAYSIZE(controller.name));
-    return DIENUM_CONTINUE;
-}
 
 void profileMemoryWrite(u8 * mem, nint size)
 {
@@ -302,49 +236,6 @@ void profileMemcpy(u8 * mem, u8 * mem2, nint size)
     memcpy(mem, mem2, size);
 }
 
-BOOL DIEnumDeviceObjectsCallback(LPCDIDEVICEOBJECTINSTANCE lpddoi, LPVOID pvRef)
-{
-    (void) pvRef;
-    strncpy(controller.buttons[controller.buttonsCount].name, lpddoi->tszName, ARRAYSIZE(controller.buttons[controller.buttonsCount].name));
-    ControllerObject type = ControllerObject_Invalid;
-    if (lpddoi->dwType & DIDFT_PSHBUTTON && lpddoi->guidType == GUID_Button){
-        type = ControllerObject_Button;
-    } else if (lpddoi->dwType & DIDFT_ABSAXIS){
-        if (lpddoi->guidType == GUID_XAxis){
-            type = ControllerObject_XAxis;
-        }
-        if (lpddoi->guidType == GUID_YAxis){
-            type = ControllerObject_YAxis;
-        }
-        if (lpddoi->guidType == GUID_ZAxis){
-            type = ControllerObject_ZAxis;
-        }
-        if (lpddoi->guidType == GUID_RxAxis){
-            type = ControllerObject_RxAxis;
-        }
-        if (lpddoi->guidType == GUID_RyAxis){
-            type = ControllerObject_RyAxis;
-        }
-        if (lpddoi->guidType == GUID_RzAxis){
-            type = ControllerObject_RzAxis;
-        }
-    }
-    if (type != ControllerObject_Invalid){
-        ASSERT((lpddoi->dwFlags & DIDOI_POLLED) == 0);
-    }
-    controller.buttons[controller.buttonsCount].type = type;
-    controller.buttons[controller.buttonsCount].dwType = lpddoi->dwType;
-    controller.buttons[controller.buttonsCount].guidType = lpddoi->guidType;
-    controller.buttonsCount++;
-    return DIENUM_CONTINUE;
-}
-
-BOOL DIEnumEffectsCallback(LPCDIEFFECTINFO pdei, LPVOID pvRef)
-{
-    (void) pvRef;
-    (void)pdei;
-    return DIENUM_CONTINUE;
-}
 
 int main(LPWSTR * argvW, int argc) {
     (void)argvW;
@@ -501,6 +392,9 @@ int main(LPWSTR * argvW, int argc) {
         initSuccess &= initAudio(window);
         LOG(default, startup, "Init audio success: %u", initSuccess);
 
+        initSuccess = initSuccess && gamepadInit();
+        LOG(default, startup, "Init gamepad success: %u", initSuccess);
+
         if(initSuccess){
             //show window and get resolution
             {
@@ -578,92 +472,13 @@ int main(LPWSTR * argvW, int argc) {
         keymap[GameAction_Left].key = 0x41;
         keymap[GameAction_Kick].key = 0x20;
 
-        IDirectInput8 * out = NULL;
-        HRESULT hr = DirectInput8Create(hInstance, DIRECTINPUT_VERSION, IID_IDirectInput8, CAST(LPVOID*, &out), NULL);
-        ASSERT(hr == DI_OK);
-        ASSERT(out != NULL);
-        hr = out->EnumDevices(DI8DEVCLASS_GAMECTRL, DIEnumDevicesCallback, NULL, DIEDFL_ATTACHEDONLY);
-        ASSERT(hr == DI_OK);
-        hr = out->CreateDevice(controller.winId, &controller.dev, NULL);
-        ASSERT(hr == DI_OK);
-        hr = controller.dev->EnumObjects(DIEnumDeviceObjectsCallback, NULL, DIDFT_ALL);
-        ASSERT(hr == DI_OK);
-        hr = controller.dev->EnumEffects(DIEnumEffectsCallback,NULL,DIEFT_ALL);
-        ASSERT(hr == DI_OK);
-        LOG(default, controller, "Controller: %s", controller.name);
-        for(i32 i = 0; i < controller.buttonsCount; i++){
-            LOG(default, controller, " - %s [%s]", controller.buttons[i].name, controllerObjToStr(controller.buttons[i].type));
-        }
-        DIPROPDWORD val = {};
-        val.diph.dwSize = sizeof(DIPROPDWORD);
-        val.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-        val.diph.dwObj = 0;
-        val.diph.dwHow = DIPH_DEVICE;
-        val.dwData = MEGABYTE(1);
-        hr = controller.dev->SetProperty(DIPROP_BUFFERSIZE, CAST(DIPROPHEADER*, &val));
-        ASSERT(hr == DI_OK);
-        val.dwData = 0;
-        hr = controller.dev->SetProperty(DIPROP_DEADZONE, CAST(DIPROPHEADER*, &val));
-        ASSERT(hr == DI_OK);
-        val.dwData = 10000;
-        hr = controller.dev->SetProperty(DIPROP_SATURATION, CAST(DIPROPHEADER*, &val));
-        ASSERT(hr == DI_OK);
+        bool controllerInit = refreshAvailableControllers();
+        ASSERT(controllerInit);
+        ControllerHandle controllerH;
+        controllerH.slotIndex = 0;
+        controllerH.sequence = controllers[0].sequence;
 
-
-        i32 iWant = 2;
-        DIOBJECTDATAFORMAT objs[2] = {};
-
-        DIPROPRANGE range = {};
-        range.diph.dwSize = sizeof(DIPROPRANGE);
-        range.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-
-        i32 runningOffset = 0;
-        for (i32 i = 0; i < iWant; i++)
-        {
-            objs[i].pguid = &controller.buttons[i].guidType; 
-            objs[i].dwOfs = runningOffset; 
-            objs[i].dwType = controller.buttons[i].dwType;
-            switch(controller.buttons[i].type)
-            {
-                case ControllerObject_XAxis:
-                case ControllerObject_YAxis:
-                case ControllerObject_ZAxis:
-                case ControllerObject_RxAxis:
-                case ControllerObject_RyAxis:
-                case ControllerObject_RzAxis:
-                {
-                    range.diph.dwHow = DIPH_BYID;
-                    range.diph.dwObj = controller.buttons[i].dwType;
-                    hr = controller.dev->GetProperty(DIPROP_RANGE, CAST(DIPROPHEADER*, &range));
-                    ASSERT(hr == DI_OK);
-                    controller.buttons[i].min = range.lMin;
-                    controller.buttons[i].max = range.lMax;
-                    controller.buttons[i].center = (controller.buttons[i].max + controller.buttons[i].min) / 2;
-                    controller.buttons[i].deviation = MIN(controller.buttons[i].center - controller.buttons[i].min, controller.buttons[i].max - controller.buttons[i].center); 
-                    controller.buttons[i].offset = runningOffset;
-                    controller.buttons[i].want = true;
-                    runningOffset += 4;
-                }break;
-                default:{
-                    INV;
-                }
-            }
-        }
-
-        DIDATAFORMAT objects = {};
-        objects.dwSize = sizeof(DIDATAFORMAT);
-        objects.dwObjSize = sizeof(DIOBJECTDATAFORMAT);
-        objects.dwFlags = DIDF_ABSAXIS;
-        objects.dwDataSize = runningOffset;
-        objects.dwNumObjs = ARRAYSIZE(objs);
-        objects.rgodf = objs;
-        hr = controller.dev->SetDataFormat(&objects);
-        ASSERT(hr == DI_OK);
-
-        DIDEVICEOBJECTDATA data[ARRAYSIZE(objs)];
-
-        hr = controller.dev->Acquire();
-        ASSERT(hr == DI_OK);
+        controllerInit = controllerInit && setUpAndUseController(&controllerH);
 
         f64 currentTime = getProcessCurrentTime();
         platform->appRunning = true;
@@ -703,50 +518,13 @@ int main(LPWSTR * argvW, int argc) {
                 DispatchMessage(&msg);
             }
 
-            DWORD datasize = ARRAYSIZE(data);
-            hr = controller.dev->GetDeviceData(sizeof(DIDEVICEOBJECTDATA), data, &datasize, 0);
-            ASSERT(hr == DI_OK);
-            for (DWORD i = 0; i < datasize; i++){
-                i32 b = -1;
+            bool pollSuccess = pollInput(&controllerH);
+            ASSERT(pollSuccess);
+            ControllerState* state = getControllerState(&controllerH);
+            ASSERT(state != NULL);
+            joy.x = state->position.x;
+            joy.y = state->position.y;
 
-                for(i32 cb = 0; cb < controller.buttonsCount; cb++){
-                    if (controller.buttons[cb].want && controller.buttons[cb].offset == data[i].dwOfs)
-                    {
-                        b = cb;
-                        break;
-                    }
-                }
-                ASSERT(b != -1);
-
-                i32 value = data[i].dwData - controller.buttons[b].center;
-                i32 deadzone = CAST(i32, 0.15f * controller.buttons[b].deviation);
-                i32 saturation = CAST(i32, 0.85f * controller.buttons[b].deviation);
-                if (value >= -deadzone && value <= deadzone)
-                {
-                    value = 0;
-                }
-                if (value <= -saturation)
-                {
-                    value = -controller.buttons[b].deviation;
-                }
-                if (value >= saturation)
-                {
-                    value = controller.buttons[b].deviation;
-                }
-
-                f32 val = CAST(f32, value) / CAST(f32, controller.buttons[b].deviation);
-                //f32 val = CAST(f32,data[i].dwData);
-                if(data[i].dwOfs == 0)
-                {
-                    printf("val %f\n", val);
-                    // We want Y up
-                    joy.y = -val;
-                }else
-                {
-                    ASSERT(data[i].dwOfs == 4);
-                    joy.x = val;
-                }
-            }
             
             gameHandleInput();
             while(accumulator >= FIXED_STEP){
@@ -782,13 +560,12 @@ int main(LPWSTR * argvW, int argc) {
             platform->frameIndex++;
             platform->framesRenderedSinceLastProfileClear++;
         }
-        hr = controller.dev->Unacquire();
-        ASSERT(hr == DI_OK);
         LOG(default, common, "Quitting main loop");
         //END OF MAIN LOOP
 
-        controller.dev->Release();
-        out->Release();
+        bool tearSuccess = unuseController(&controllerH);
+        ASSERT(tearSuccess);
+        retireAvailableControllers();
 
         //shaders and stuff
         glDeleteShader(gl->game.fragmentShader);
@@ -804,6 +581,7 @@ int main(LPWSTR * argvW, int argc) {
         glDeleteProgram(gl->wire.program);
         
         guiFinalize();
+        gamepadFinalize();
         //end of shaders and stuff
         
         //cleanup
