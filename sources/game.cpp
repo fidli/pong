@@ -213,7 +213,7 @@ void gameFixedStep(f64 dt){
            game->entities[2].player.rotationYRad = degToRad(0);
     }
     // IF joy?
-    playerDir = V2(joy.x, joy.y);
+    playerDir = V2(state->dpad.x, state->dpad.y);
 
 
     v2 playerForces = {};

@@ -50,10 +50,7 @@ struct Key{
     bool changed;
 } keys[256];
 
-struct{
-    f32 x;
-    f32 y;
-} joy;
+ControllerState * state;
 
 struct OpenglSprite{
     i32 framesX;
@@ -521,10 +518,11 @@ int main(LPWSTR * argvW, int argc) {
 
             bool pollSuccess = pollInput(&controllerH);
             ASSERT(pollSuccess);
-            ControllerState* state = getControllerState(&controllerH);
+            state = getControllerState(&controllerH);
             ASSERT(state != NULL);
-            joy.x = state->position.x;
-            joy.y = state->position.y;
+            //printf("dpad %f %x\n", CAST(f32, state->dpad.val), state->dpad.val);
+            //joy.x = state->position.x;
+            //joy.y = state->position.y;
 
             
             gameHandleInput();
