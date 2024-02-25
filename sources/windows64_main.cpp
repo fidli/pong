@@ -534,7 +534,7 @@ int main(LPWSTR * argvW, int argc) {
                 accumulator -= FIXED_STEP;
             }
             gameStep(frameTime);
-            Game toRender = gameInterpolateSteps(&previousState, game, CAST(f32, accumulator/FIXED_STEP));
+            Game toRender = gameInterpolateStepsForRendering(&previousState, game, CAST(f32, accumulator/FIXED_STEP));
             
             if(platform->mouseOut){
                 if(GetCursor() == NULL){

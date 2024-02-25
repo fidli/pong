@@ -26,18 +26,30 @@ struct PlayerInput {
     bool down;
 };
 
+enum EntityType
+{
+    EntityType_Invalid,
+
+    EntityType_StaticBlock,
+    EntityType_Player,
+    EntityType_Ball,
+
+    EntityTypeCount
+};
+
 struct Entity {
 
+    EntityType type;
     f32 mass;
 
     v2 vel;
-    CollisionRectAxisAligned body;
 
     Animation * animation;
     v4 overlayColor;
 
     union {
         struct {
+            CollisionRectAxisAligned body;
             u8 score;
             u32 action;
             PlayerInput input;
@@ -47,9 +59,13 @@ struct Entity {
             f32 angularVel;
         } player;
         struct {
+            CollisionRectAxisAligned body;
             v2 dir;
             v2 acc;
         } ball;
+        struct {
+            CollisionRectAxisAligned body;
+        } block;
     };
     
 };
@@ -70,81 +86,100 @@ extern Game * game;
 
 void gameInit(AudioTrack track){
 
-    game->entities[0].body.size = V2(170.0f, 90.0f);
-    game->entities[0].body.pos = V2(0.0f, 0.0f);
+    Entity* field = &game->entities[0];
+    field->type = EntityType_StaticBlock;
+    Entity* ball = &game->entities[1];
+    ball->type = EntityType_Ball;
+    Entity* player1 = &game->entities[2];
+    player1->type = EntityType_Player;
+    Entity* player2 = &game->entities[3];
+    player2->type = EntityType_Player;
 
-    game->entities[2].body.size = V2(6.0f, 6.0f);
-    game->entities[2].body.pos = game->entities[0].body.pos + V2(-game->entities[0].body.size.x/2 + game->entities[2].body.size.x/2.0f, 0);
-    game->entities[2].mass = 80.0f;
-    game->entities[2].player.dir = V2(1.0f, 0);
-    game->entities[2].player.wantDir = game->entities[2].player.dir;
-    game->entities[2].player.rotationYRad = degToRad(180);
+    field->block.body.size = V2(170.0f, 90.0f);
+    field->block.body.pos = V2(0.0f, 0.0f);
+
+    player1->player.body.size = V2(6.0f, 6.0f);
+    player1->player.body.pos = field->block.body.pos + V2(-field->block.body.size.x/2 + player1->player.body.size.x/2.0f, 0);
+    player1->mass = 80.0f;
+    player1->player.dir = V2(1.0f, 0);
+    player1->player.wantDir = player1->player.dir;
+    player1->player.rotationYRad = degToRad(180);
     
     
 
-    game->entities[3].body.size = V2(6.0f, 6.0f);
-    game->entities[3].body.pos = game->entities[0].body.pos + V2(game->entities[0].body.size.x/2, 0) - game->entities[3].body.size/2.0f;
-    game->entities[3].mass = 80.0f;
-    game->entities[3].player.dir = V2(-1.0f, 0);
-    game->entities[3].player.rotationYRad = degToRad(0);
-    game->entities[3].player.wantDir = game->entities[3].player.dir;
-    game->entities[2].animation = game->entities[3].animation = findAnimation("pig-idle");
+    player2->player.body.size = V2(6.0f, 6.0f);
+    player2->player.body.pos = field->block.body.pos + V2(field->block.body.size.x/2, 0) - player2->player.body.size/2.0f;
+    player2->mass = 80.0f;
+    player2->player.dir = V2(-1.0f, 0);
+    player2->player.rotationYRad = degToRad(0);
+    player2->player.wantDir = player2->player.dir;
+    player1->animation = player2->animation = findAnimation("pig-idle");
 
-    game->entities[1].body.size = V2(1.0f, 1.0f);
-    game->entities[1].body.pos = game->entities[2].body.pos + game->entities[2].player.dir * ((length(game->entities[2].body.size) + length(game->entities[1].body.size))/2.0f);
-    game->entities[1].ball.dir = game->entities[2].player.dir;
-    game->entities[1].vel = V2(0, 0);
-    game->entities[1].mass = 5.0f;
+    ball->ball.body.size = V2(1.0f, 1.0f);
+    ball->ball.body.pos = player1->player.body.pos + player1->player.dir * ((length(player1->player.body.size) + length(ball->ball.body.size))/2.0f);
+    ball->ball.dir = player1->player.dir;
+    ball->vel = V2(0, 0);
+    ball->mass = 5.0f;
 
-    game->boundaries[0].size = V2(game->entities[0].body.size.x, 10.0f);
-    game->boundaries[0].pos = game->entities[0].body.pos + V2(0, game->entities[0].body.size.y/2 + game->boundaries[0].size.y/2.0f);
+    game->boundaries[0].size = V2(field->block.body.size.x, 10.0f);
+    game->boundaries[0].pos = field->block.body.pos + V2(0, field->block.body.size.y/2 + game->boundaries[0].size.y/2.0f);
 
-    game->boundaries[1].size = V2(10.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
-    game->boundaries[1].pos = game->entities[0].body.pos + V2(-game->entities[0].body.size.x/2 - game->boundaries[1].size.x/2.0f, 0);
+    game->boundaries[1].size = V2(10.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
+    game->boundaries[1].pos = field->block.body.pos + V2(-field->block.body.size.x/2 - game->boundaries[1].size.x/2.0f, 0);
 
-    game->boundaries[2].size = V2(game->entities[0].body.size.x, 10.0f);
-    game->boundaries[2].pos = game->entities[0].body.pos + V2(0, -game->entities[0].body.size.y/2 - game->boundaries[2].size.y/2.0f);
+    game->boundaries[2].size = V2(field->block.body.size.x, 10.0f);
+    game->boundaries[2].pos = field->block.body.pos + V2(0, -field->block.body.size.y/2 - game->boundaries[2].size.y/2.0f);
 
-    game->boundaries[3].size = V2(10.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
-    game->boundaries[3].pos = game->entities[0].body.pos + V2(game->entities[0].body.size.x/2 + game->boundaries[1].size.x/2.0f, 0);
+    game->boundaries[3].size = V2(10.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
+    game->boundaries[3].pos = field->block.body.pos + V2(field->block.body.size.x/2 + game->boundaries[1].size.x/2.0f, 0);
 
-    game->boundaries[4].size = V2(2.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
-    game->boundaries[4].pos = game->entities[0].body.pos + V2(-game->entities[0].body.size.x/2 + game->entities[0].body.size.x/5 - game->boundaries[1].size.x/2.0f, 0);
+    game->boundaries[4].size = V2(2.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
+    game->boundaries[4].pos = field->block.body.pos + V2(-field->block.body.size.x/2 + field->block.body.size.x/5 - game->boundaries[1].size.x/2.0f, 0);
 
-    game->boundaries[5].size = V2(2.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
-    game->boundaries[5].pos = game->entities[0].body.pos + V2(game->entities[0].body.size.x/2 - game->entities[0].body.size.x/5 + game->boundaries[1].size.x/2.0f, 0);
+    game->boundaries[5].size = V2(2.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
+    game->boundaries[5].pos = field->block.body.pos + V2(field->block.body.size.x/2 - field->block.body.size.x/5 + game->boundaries[1].size.x/2.0f, 0);
 
-    game->entities[0].overlayColor = V4(0, 1, 0, 0.1f);
+    field->overlayColor = V4(0, 1, 0, 0.1f);
 
     game->track = track;
 }
 
 void gameHandleInput(){
+    Entity* field = &game->entities[0];
+    Entity* ball = &game->entities[1];
+    Entity* player1 = &game->entities[2];
+    Entity* player2 = &game->entities[3];
+
     if(keys[keymap[GameAction_Up].key].down){
-        game->entities[2].player.action |= 1 << GameAction_Up;
+        player1->player.action |= 1 << GameAction_Up;
     }
     if(keys[keymap[GameAction_Right].key].down){
-        game->entities[2].player.action |= 1 << GameAction_Right;
+        player1->player.action |= 1 << GameAction_Right;
     }
     if(keys[keymap[GameAction_Down].key].down){
-        game->entities[2].player.action |= 1 << GameAction_Down;
+        player1->player.action |= 1 << GameAction_Down;
     }
     if(keys[keymap[GameAction_Left].key].down){
-        game->entities[2].player.action |= 1 << GameAction_Left;
+        player1->player.action |= 1 << GameAction_Left;
     }
     if(keys[keymap[GameAction_Kick].key].down){
-        game->entities[2].player.action |= 1 << GameAction_Kick;
+        player1->player.action |= 1 << GameAction_Kick;
     }
 }
 
 void gameFixedStep(f64 dt){
+    Entity* field = &game->entities[0];
+    Entity* ball = &game->entities[1];
+    Entity* player1 = &game->entities[2];
+    Entity* player2 = &game->entities[3];
+    Entity* players[] = {player1, player2};
     game->aiAccumulator += dt;
     if (game->aiAccumulator >= AI_STEP)
     {
         i32 steps = 0;
-        if (game->entities[1].vel.x > 0){
-            v2 newPos = game->entities[1].body.pos + game->entities[1].vel*float(AI_STEP);
-            f32 distance = newPos.y - game->entities[3].body.pos.y;
+        if (ball->vel.x > 0){
+            v2 newPos = ball->ball.body.pos + ball->vel*float(AI_STEP);
+            f32 distance = newPos.y - player2->player.body.pos.y;
             f32 aiVel = 1.0f;
             steps = MIN(ABS((i32)((distance / aiVel)/dt)), i32(AI_STEP/FIXED_STEP));
             GameAction movement;
@@ -170,18 +205,18 @@ void gameFixedStep(f64 dt){
         switch(game->aiSteps[game->aiCurrentStep]){
             case GameAction_Up:
             {
-                game->entities[3].vel.y = -25.0f;
-                game->entities[3].animation = findAnimation("pig-run");
+                player2->vel.y = -25.0f;
+                player2->animation = findAnimation("pig-run");
             }break; 
             case GameAction_Down:
             {
-                game->entities[3].vel.y = 25.0f;
-                game->entities[3].animation = findAnimation("pig-run");
+                player2->vel.y = 25.0f;
+                player2->animation = findAnimation("pig-run");
             }break;
             case GameAction_Stop:
             {
-                game->entities[3].vel = V2(0.0f, 0.0f);
-                game->entities[3].animation = findAnimation("pig-idle");
+                player2->vel = V2(0.0f, 0.0f);
+                player2->animation = findAnimation("pig-idle");
             }break;
             default:
             {
@@ -194,30 +229,30 @@ void gameFixedStep(f64 dt){
     
     f32 playerForceSize = 40000.0f;
     v2 playerDir = V2(0.0f, 0.0f);
-    if (game->entities[2].player.action & (1 << GameAction_Up))
+    if (player1->player.action & (1 << GameAction_Up))
     {
            playerDir += V2(0.0f, 1.0f);
     }
-    if (game->entities[2].player.action & (1 << GameAction_Right))
+    if (player1->player.action & (1 << GameAction_Right))
     {
            playerDir += V2(1.0f, 0.0f);
-           game->entities[2].player.rotationYRad = degToRad(180);
+           player1->player.rotationYRad = degToRad(180);
     }
-    if (game->entities[2].player.action & (1 << GameAction_Down))
+    if (player1->player.action & (1 << GameAction_Down))
     {
            playerDir += V2(0.0f, -1.0f);
     }
-    if (game->entities[2].player.action & (1 << GameAction_Left))
+    if (player1->player.action & (1 << GameAction_Left))
     {
            playerDir += V2(-1.0f, 0.0f);
-           game->entities[2].player.rotationYRad = degToRad(0);
+           player1->player.rotationYRad = degToRad(0);
     }
     if (state)
     {
         playerDir = V2(state->position.x, state->position.y);
         if (state->buttons[0].down)
         {
-            game->entities[2].player.action |= 1 << GameAction_Kick;
+            player1->player.action |= 1 << GameAction_Kick;
         }
     }
 
@@ -225,78 +260,79 @@ void gameFixedStep(f64 dt){
     v2 playerForces = {};
     if (length(playerDir) > 0){
         v2 dir = normalize(playerDir);
-        game->entities[2].player.wantDir = dir;
+        player1->player.wantDir = dir;
         playerForces = dir * playerForceSize;
-        game->entities[2].animation = findAnimation("pig-run");
+        player1->animation = findAnimation("pig-run");
     }
 
-    if (dot(game->entities[2].player.dir, game->entities[2].player.wantDir) != 1.0f)
+    if (dot(player1->player.dir, player1->player.wantDir) != 1.0f)
     {
-        f32 speedDir = cross(game->entities[2].player.dir, game->entities[2].player.wantDir).z;
+        f32 speedDir = cross(player1->player.dir, player1->player.wantDir).z;
         if (speedDir == 0.0f){
             speedDir = 1.0f;
         }else{
             speedDir = speedDir/ABS(speedDir);
         }
         f32 playerForceAngularSize = playerForceSize;
-        f32 angularAcc = playerForceAngularSize / game->entities[1].mass;
-        game->entities[2].player.angularVel += angularAcc*CAST(f32, dt);
-        game->entities[2].player.angularVel = clamp(game->entities[2].player.angularVel, 0.0f, 4.0f*PI);
-        f32 advance = fmod(game->entities[2].player.angularVel * CAST(f32, dt), 2.0f*PI);
-        v2 newDir = rotate(game->entities[2].player.dir, speedDir*advance);
-        f32 newSpeedDir = cross(newDir, game->entities[2].player.wantDir).z;
+        f32 angularAcc = playerForceAngularSize / ball->mass;
+        player1->player.angularVel += angularAcc*CAST(f32, dt);
+        player1->player.angularVel = clamp(player1->player.angularVel, 0.0f, 4.0f*PI);
+        f32 advance = fmod(player1->player.angularVel * CAST(f32, dt), 2.0f*PI);
+        v2 newDir = rotate(player1->player.dir, speedDir*advance);
+        f32 newSpeedDir = cross(newDir, player1->player.wantDir).z;
         if(newSpeedDir * speedDir <= 0.0f){
-            game->entities[2].player.dir = game->entities[2].player.wantDir;
-            game->entities[2].player.angularVel = 0;
+            player1->player.dir = player1->player.wantDir;
+            player1->player.angularVel = 0;
         }else{
-            game->entities[2].player.dir = newDir;
+            player1->player.dir = newDir;
         }
     }
     
 
     f32 g = 10.0; // m / s^2
     f32 grassFrictionCoef = 10.0f;
-    if (length(game->entities[2].vel) != 0){
-        f32 FnPlayer = game->entities[2].mass * g;
+    if (length(player1->vel) != 0){
+        f32 FnPlayer = player1->mass * g;
         f32 FfrictionPlayer = grassFrictionCoef * FnPlayer;
-        playerForces += -1*normalize(game->entities[2].vel)*FfrictionPlayer;
+        playerForces += -1*normalize(player1->vel)*FfrictionPlayer;
     }
 
-    v2 oldVelocity = game->entities[2].vel;
-    v2 acc = playerForces / game->entities[2].mass;
-    game->entities[2].vel += acc * CAST(f32, dt);
-    if (dot(oldVelocity, game->entities[2].vel) < 0 || length(game->entities[2].vel) < 0.005f){
-        game->entities[2].vel = V2(0, 0);
-        game->entities[2].animation = findAnimation("pig-idle");
+    v2 oldVelocity = player1->vel;
+    v2 acc = playerForces / player1->mass;
+    player1->vel += acc * CAST(f32, dt);
+    if (dot(oldVelocity, player1->vel) < 0 || length(player1->vel) < 0.005f){
+        player1->vel = V2(0, 0);
+        player1->animation = findAnimation("pig-idle");
     }
     f32 maxVel = 80.0f;
-    if (length(game->entities[2].vel) > maxVel){
-        game->entities[2].vel = normalize(game->entities[2].vel) * maxVel;
+    if (length(player1->vel) > maxVel){
+        player1->vel = normalize(player1->vel) * maxVel;
     }
 
     // Player collisions against boundaries
     // There is no player to player collision, it should not happen
-    // TODO robust with normals
-    for(i32 pi = 2; pi <= 3; pi++)
+    // TODO robust with normals & shapecast
+    for(i32 pi = 0; pi < ARRAYSIZE(players); pi++)
     {
+        Entity* player = players[pi];
         i32 bounces = 5;
         bool retest = false;
-        v2 intoDirection = game->entities[pi].vel;
+        v2 intoDirection = player->vel;
         f32 remainAdvance = CAST(f32, dt); 
         do{
-            game->entities[pi].body.pos += intoDirection * remainAdvance;
+            player->player.body.pos += intoDirection * remainAdvance;
             retest = false;
             for(i32 bi = 0; bi < ARRAYSIZE(game->boundaries) && !retest; bi++)
             {
-                if (collide(game->entities[pi].body, game->boundaries[bi])){
-                    intoDirection = collidePop(game->entities[pi].body, game->boundaries[bi], -intoDirection);
-                    game->entities[pi].body.pos += intoDirection;
+                if (collide(player->player.body, game->boundaries[bi])){
+                    intoDirection = collidePop(player->player.body, game->boundaries[bi], -intoDirection);
+                    player->player.body.pos += intoDirection;
                     if (length(intoDirection) <= 0.005f)
                     {
                         retest = false;
                     }
                     else{
-                        intoDirection = collideSlide(game->entities[pi].body, game->boundaries[bi], -1*intoDirection);
+                        intoDirection = collideSlide(player->player.body, game->boundaries[bi], -1*intoDirection);
                         remainAdvance = 1;
                         retest = true;
                     }
@@ -307,93 +343,39 @@ void gameFixedStep(f64 dt){
         
     }
 
-    if(length(game->entities[1].vel) == 0)
+    if(length(ball->vel) == 0)
     {
-        game->entities[1].body.pos = game->entities[2].body.pos + game->entities[2].player.dir * ((length(game->entities[2].body.size) + length(game->entities[1].body.size))/2.0f);
+        ball->ball.body.pos = player1->player.body.pos + player1->player.dir * ((length(player1->player.body.size) + length(ball->ball.body.size))/2.0f);
     }
 
     f32 ballWeight = 1.0; // kG
     f32 FnBall = ballWeight * g;
     f32 FfrictionBall = 0 * 0.08f * FnBall;
-    game->entities[1].ball.acc -= normalize(game->entities[1].ball.dir)*(FfrictionBall / ballWeight);
-    if((game->entities[2].player.action & (1 << GameAction_Kick)) && length(game->entities[1].vel) == 0.0f)
+    ball->ball.acc -= normalize(ball->ball.dir)*(FfrictionBall / ballWeight);
+    if((player1->player.action & (1 << GameAction_Kick)) && length(ball->vel) == 0.0f)
     {
         f32 force = 50000.0f;
-        game->entities[1].ball.dir = game->entities[2].player.dir;
-        game->entities[1].ball.acc += (force  / ballWeight)*normalize(game->entities[1].ball.dir);
-        game->entities[1].vel = (game->entities[1].ball.acc + acc) * CAST(f32, INSTANT_DURATION) + game->entities[2].vel;
+        ball->ball.dir = player1->player.dir;
+        ball->ball.acc += (force  / ballWeight)*normalize(ball->ball.dir);
+        ball->vel = (ball->ball.acc + acc) * CAST(f32, INSTANT_DURATION) + player1->vel;
     }else{
-        v2 newVel = game->entities[1].vel + game->entities[1].ball.acc * CAST(f32, dt);
-        if(dot(newVel, game->entities[1].vel) > 0){
-            game->entities[1].vel = newVel;
-            game->entities[1].ball.dir = normalize(newVel);
+        v2 newVel = ball->vel + ball->ball.acc * CAST(f32, dt);
+        if(dot(newVel, ball->vel) > 0){
+            ball->vel = newVel;
+            ball->ball.dir = normalize(newVel);
         }
         else{
-            game->entities[1].vel = V2(0, 0);
+            ball->vel = V2(0, 0);
         }
     }
-    game->entities[1].ball.acc = V2(0, 0);
+    ball->ball.acc = V2(0, 0);
     
-    if (length(game->entities[1].vel) > 0){
-#if 0
-        Entity currentBall = game->entities[1];
-        // ONly for assert
-        Entity originalBall = game->entities[1];
-        f32 remainAdvance = length(game->entities[1].vel)*CAST(f32, dt);
+    if (length(ball->vel) > 0){
+        f32 remainAdvance = length(ball->vel)*CAST(f32, dt);
         i32 bounces = 5;
-        CollisionRectAxisAligned * bouncers[4] = {&game->boundaries[0], &game->boundaries[2], &game->entities[2].body, &game->entities[3].body};
-
-
-        do{
-            Entity newBall = currentBall;
-            newBall.body.pos += currentBall.ball.dir*remainAdvance;
-            bool collision = false;
-            for(i32 i = 0; i < ARRAYSIZE(bouncers) && !collision; i++){
-                ASSERT(!collide(originalBall.body, *bouncers[i]));
-                if (collide(newBall.body, *bouncers[i])){
-                    collision = true;
-                    v2 pop = collidePop(newBall.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
-                    currentBall.body.pos = newBall.body.pos + pop;
-                    currentBall.ball.dir = collideReflect(currentBall.body, *bouncers[i], currentBall.ball.dir);
-                    ASSERT(!collide(currentBall.body, *bouncers[i]));
-                    remainAdvance = length(pop);
-                    bounces--;
-                    playAudio(&game->track);
-                    if (i >= 2){
-                        // this is player bounce, indices match by accident
-                        currentBall.ball.acc = game->entities[i].vel/CAST(f32, dt);
-                    }
-                }
-            }
-            if (!collision){
-                remainAdvance = 0;
-                currentBall = newBall;
-                if(collide(newBall.body, game->boundaries[1])){
-                    game->entities[3].player.score += 1;
-                    game->entities[1].vel = V2(0, 0);
-                    game->entities[1].body.pos = V2(0, 0);
-                    game->entities[3].vel = V2(0, 0);
-                    return;
-                }
-                else if(collide(newBall.body, game->boundaries[3])){
-                    game->entities[2].player.score += 1;
-                    game->entities[1].vel = V2(0, 0);
-                    game->entities[1].body.pos = V2(0, 0);
-                    game->entities[3].vel = V2(0, 0);
-                    return;
-                }
-            }
-        } while (remainAdvance >= 0.0000005f && bounces > 0);
-        ASSERT(remainAdvance <= 0.0000005f);
-        game->entities[1] = currentBall;
-        game->entities[1].vel = currentBall.ball.dir * length(game->entities[1].vel);
-#endif
-        f32 remainAdvance = length(game->entities[1].vel)*CAST(f32, dt);
-        i32 bounces = 1000;
         CollisionRectAxisAligned * bouncers[2] = {&game->boundaries[0], &game->boundaries[2]};
-        CollisionRectAxisAligned * players[2] = {&game->entities[2].body, &game->entities[3].body};
 
-        Entity currentBall = game->entities[1];
+        Entity currentBall = *ball;
         // 0) Do movement
         // 1) collide against player and pop
         // 2) collide against bouncers and pop
@@ -402,26 +384,26 @@ void gameFixedStep(f64 dt){
         do{
             Entity newBall = currentBall;
             // 0)
-            newBall.body.pos += currentBall.ball.dir*remainAdvance;
+            newBall.ball.body.pos += currentBall.ball.dir*remainAdvance;
             // 1)
             bool collision = false;
             for(i32 i = 0; i < ARRAYSIZE(players); i++){
-                if (collide(newBall.body, *players[i])){
+                Entity* player = players[i];
+                CollisionRectAxisAligned* playerBody = &player->player.body;
+                if (collide(newBall.ball.body, *playerBody)){
                     collision = true;
 
-                    bool reflect = length(game->entities[i+2].vel) < 0.0005f || dot(currentBall.ball.dir, game->entities[i+2].vel) <= 0;
-                    v2 pop = collidePop(newBall.body, *players[i], (1-(2*reflect))*(currentBall.ball.dir*remainAdvance));
-                    currentBall.body.pos = newBall.body.pos + pop;
+                    bool reflect = length(player->vel) < 0.0005f || dot(currentBall.ball.dir, player->vel) <= 0;
+                    v2 pop = collidePop(newBall.ball.body, *playerBody, (1-(2*reflect))*(currentBall.ball.dir*remainAdvance));
+                    currentBall.ball.body.pos = newBall.ball.body.pos + pop;
                     if (reflect)
                     {
-                        currentBall.ball.dir = collideReflect(currentBall.body, *players[i], currentBall.ball.dir);
+                        currentBall.ball.dir = collideReflect(currentBall.ball.body, *playerBody, currentBall.ball.dir);
                     }
-                    ASSERT(!collide(currentBall.body, *players[i]));
+                    ASSERT(!collide(currentBall.ball.body, *playerBody));
                     remainAdvance = clamp(length(pop), 0.0f, remainAdvance);
                     bounces--;
                     playAudio(&game->track);
-                    // players start at index 2
-                    // currentBall.ball.acc = game->entities[i + 2].vel/CAST(f32, dt);
                     newBall = currentBall;
                     break;
                 }
@@ -429,12 +411,12 @@ void gameFixedStep(f64 dt){
 
             // 2)
             for(i32 i = 0; i < ARRAYSIZE(bouncers); i++){
-                if (collide(newBall.body, *bouncers[i])){
+                if (collide(newBall.ball.body, *bouncers[i])){
                     collision = true;
-                    v2 pop = collidePop(newBall.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
-                    currentBall.body.pos = newBall.body.pos + pop;
-                    currentBall.ball.dir = collideReflect(currentBall.body, *bouncers[i], currentBall.ball.dir);
-                    ASSERT(!collide(currentBall.body, *bouncers[i]));
+                    v2 pop = collidePop(newBall.ball.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
+                    currentBall.ball.body.pos = newBall.ball.body.pos + pop;
+                    currentBall.ball.dir = collideReflect(currentBall.ball.body, *bouncers[i], currentBall.ball.dir);
+                    ASSERT(!collide(currentBall.ball.body, *bouncers[i]));
                     remainAdvance = clamp(length(pop), 0.0f, remainAdvance);
                     bounces--;
                     playAudio(&game->track);
@@ -445,13 +427,15 @@ void gameFixedStep(f64 dt){
 
             // 3)
             for(i32 i = 0; i < ARRAYSIZE(players); i++){
-                if (collide(newBall.body, *players[i])){
+                Entity* player = players[i];
+                CollisionRectAxisAligned* playerBody = &player->player.body;
+                if (collide(newBall.ball.body, *playerBody)){
                     collision = true;
-                    v2 pop = collidePop(newBall.body, *players[i], -(currentBall.ball.dir*remainAdvance));
+                    v2 pop = collidePop(newBall.ball.body, *playerBody, -(currentBall.ball.dir*remainAdvance));
                     currentBall = newBall;
                     // players start at index 2
-                    game->entities[i + 2].body.pos -= pop;
-                    ASSERT(!collide(currentBall.body, *players[i]));
+                    player->player.body.pos -= pop;
+                    ASSERT(!collide(currentBall.ball.body, *playerBody));
                     currentBall.vel = V2(0, 0);
                     currentBall.ball.acc = V2(0, 0);
                     remainAdvance = 0;
@@ -463,18 +447,18 @@ void gameFixedStep(f64 dt){
             if (!collision){
                 remainAdvance = 0;
                 currentBall = newBall;
-                if(collide(newBall.body, game->boundaries[1])){
-                    game->entities[3].player.score += 1;
-                    game->entities[1].vel = V2(0, 0);
-                    game->entities[1].body.pos = V2(0, 0);
-                    game->entities[3].vel = V2(0, 0);
+                if(collide(newBall.ball.body, game->boundaries[1])){
+                    player2->player.score += 1;
+                    ball->vel = V2(0, 0);
+                    ball->ball.body.pos = V2(0, 0);
+                    player2->vel = V2(0, 0);
                     return;
                 }
-                else if(collide(newBall.body, game->boundaries[3])){
-                    game->entities[2].player.score += 1;
-                    game->entities[1].vel = V2(0, 0);
-                    game->entities[1].body.pos = V2(0, 0);
-                    game->entities[3].vel = V2(0, 0);
+                else if(collide(newBall.ball.body, game->boundaries[3])){
+                    player1->player.score += 1;
+                    ball->vel = V2(0, 0);
+                    ball->ball.body.pos = V2(0, 0);
+                    player2->vel = V2(0, 0);
                     return;
                 }
             }
@@ -482,27 +466,39 @@ void gameFixedStep(f64 dt){
         } while (remainAdvance >= 0.0000005f && bounces > 0);
 
         ASSERT(remainAdvance <= 0.0000005f);
-        game->entities[1] = currentBall;
-        game->entities[1].vel = currentBall.ball.dir * length(game->entities[1].vel);
+        *ball = currentBall;
+        ball->vel = currentBall.ball.dir * length(ball->vel);
 
     }
 
 }
 
-Game gameInterpolateSteps(Game * from, Game * to, f32 t)
+Game gameInterpolateStepsForRendering(Game * from, Game * to, f32 t)
 {
     Game result = *to;
     
     // 0 is field, no need to lerp/slepr
-    for (i32 i = 1; i < ARRAYSIZE(game->entities); i++){
-        result.entities[i].body.pos = lerp(&from->entities[i].body.pos, &to->entities[i].body.pos, t);
-        if (i == 1)
+    for (i32 i = 0; i < ARRAYSIZE(game->entities); i++){
+        Entity* entity = &game->entities[i];
+        switch (entity->type)
         {
-            result.entities[i].ball.dir = slerp(&from->entities[i].ball.dir, &to->entities[i].ball.dir, t);
-        }
-        else if (i == 2 || i == 3)
-        {
-            result.entities[i].player.dir = slerp(&from->entities[i].player.dir, &to->entities[i].player.dir, t);
+            case EntityType_Player:
+            {
+                result.entities[i].player.body.pos = lerp(&from->entities[i].player.body.pos, &to->entities[i].player.body.pos, t);
+                result.entities[i].player.dir = slerp(&from->entities[i].player.dir, &to->entities[i].player.dir, t);
+            }break;
+            case EntityType_Ball:
+            {
+                result.entities[i].ball.body.pos = lerp(&from->entities[i].ball.body.pos, &to->entities[i].ball.body.pos, t);
+                result.entities[i].ball.dir = slerp(&from->entities[i].ball.dir, &to->entities[i].ball.dir, t);
+            }break;
+            case EntityType_StaticBlock:
+            {
+            }break;
+            default:
+            {
+                INV;
+            }break;
         }
     }
 
@@ -510,8 +506,12 @@ Game gameInterpolateSteps(Game * from, Game * to, f32 t)
 }
 
 void gameStep(f64 dt){
+    Entity* field = &game->entities[0];
+    Entity* ball = &game->entities[1];
+    Entity* player1 = &game->entities[2];
+    Entity* player2 = &game->entities[3];
     (void)dt;
-    game->entities[2].player.action = 0;
+    player1->player.action = 0;
 }
 
 void gameExit(){

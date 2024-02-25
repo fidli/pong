@@ -1,6 +1,4 @@
 #pragma once
-enum EntityType : u32;
-
 struct Platform{
     bool appRunning;
     
