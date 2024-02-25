@@ -31,7 +31,7 @@ struct Entity {
     f32 mass;
 
     v2 vel;
-    CollisionRect body;
+    CollisionRectAxisAligned body;
 
     Animation * animation;
     v4 overlayColor;
@@ -62,7 +62,7 @@ struct Game {
 
     AudioTrack track;
 
-    CollisionRect boundaries[6];
+    CollisionRectAxisAligned boundaries[6];
     Entity entities[4];
 };
 
@@ -96,22 +96,22 @@ void gameInit(AudioTrack track){
     game->entities[1].vel = V2(0, 0);
     game->entities[1].mass = 5.0f;
 
-    game->boundaries[0].size = V2(game->entities[0].body.size.x, 1.0f);
+    game->boundaries[0].size = V2(game->entities[0].body.size.x, 10.0f);
     game->boundaries[0].pos = game->entities[0].body.pos + V2(0, game->entities[0].body.size.y/2 + game->boundaries[0].size.y/2.0f);
 
-    game->boundaries[1].size = V2(1.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
+    game->boundaries[1].size = V2(10.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
     game->boundaries[1].pos = game->entities[0].body.pos + V2(-game->entities[0].body.size.x/2 - game->boundaries[1].size.x/2.0f, 0);
 
-    game->boundaries[2].size = V2(game->entities[0].body.size.x, 1.0f);
+    game->boundaries[2].size = V2(game->entities[0].body.size.x, 10.0f);
     game->boundaries[2].pos = game->entities[0].body.pos + V2(0, -game->entities[0].body.size.y/2 - game->boundaries[2].size.y/2.0f);
 
-    game->boundaries[3].size = V2(1.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
+    game->boundaries[3].size = V2(10.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
     game->boundaries[3].pos = game->entities[0].body.pos + V2(game->entities[0].body.size.x/2 + game->boundaries[1].size.x/2.0f, 0);
 
-    game->boundaries[4].size = V2(1.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
+    game->boundaries[4].size = V2(2.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
     game->boundaries[4].pos = game->entities[0].body.pos + V2(-game->entities[0].body.size.x/2 + game->entities[0].body.size.x/5 - game->boundaries[1].size.x/2.0f, 0);
 
-    game->boundaries[5].size = V2(1.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
+    game->boundaries[5].size = V2(2.0f, game->entities[0].body.size.y + game->boundaries[0].size.y*2);
     game->boundaries[5].pos = game->entities[0].body.pos + V2(game->entities[0].body.size.x/2 - game->entities[0].body.size.x/5 + game->boundaries[1].size.x/2.0f, 0);
 
     game->entities[0].overlayColor = V4(0, 1, 0, 0.1f);
@@ -212,8 +212,14 @@ void gameFixedStep(f64 dt){
            playerDir += V2(-1.0f, 0.0f);
            game->entities[2].player.rotationYRad = degToRad(0);
     }
-    // IF joy?
-    playerDir = V2(state->dpad.x, state->dpad.y);
+    if (state)
+    {
+        playerDir = V2(state->position.x, state->position.y);
+        if (state->buttons[0].down)
+        {
+            game->entities[2].player.action |= 1 << GameAction_Kick;
+        }
+    }
 
 
     v2 playerForces = {};
@@ -268,6 +274,9 @@ void gameFixedStep(f64 dt){
         game->entities[2].vel = normalize(game->entities[2].vel) * maxVel;
     }
 
+    // Player collisions against boundaries
+    // There is no player to player collision, it should not happen
+    // TODO robust with normals
     for(i32 pi = 2; pi <= 3; pi++)
     {
         i32 bounces = 5;
@@ -282,14 +291,22 @@ void gameFixedStep(f64 dt){
                 if (collide(game->entities[pi].body, game->boundaries[bi])){
                     intoDirection = collidePop(game->entities[pi].body, game->boundaries[bi], -intoDirection);
                     game->entities[pi].body.pos += intoDirection;
-                    intoDirection = collideSlide(game->entities[pi].body, game->boundaries[bi], -1*intoDirection);
-                    remainAdvance = 1;
-                    retest = true;
+                    if (length(intoDirection) <= 0.005f)
+                    {
+                        retest = false;
+                    }
+                    else{
+                        intoDirection = collideSlide(game->entities[pi].body, game->boundaries[bi], -1*intoDirection);
+                        remainAdvance = 1;
+                        retest = true;
+                    }
                 }
             }
             bounces--;
         }while(bounces && retest && length(intoDirection) > 0.005f);
+        
     }
+
     if(length(game->entities[1].vel) == 0)
     {
         game->entities[1].body.pos = game->entities[2].body.pos + game->entities[2].player.dir * ((length(game->entities[2].body.size) + length(game->entities[1].body.size))/2.0f);
@@ -318,15 +335,21 @@ void gameFixedStep(f64 dt){
     game->entities[1].ball.acc = V2(0, 0);
     
     if (length(game->entities[1].vel) > 0){
+#if 0
         Entity currentBall = game->entities[1];
+        // ONly for assert
+        Entity originalBall = game->entities[1];
         f32 remainAdvance = length(game->entities[1].vel)*CAST(f32, dt);
         i32 bounces = 5;
-        CollisionRect * bouncers[4] = {&game->boundaries[0], &game->boundaries[2], &game->entities[2].body, &game->entities[3].body};
+        CollisionRectAxisAligned * bouncers[4] = {&game->boundaries[0], &game->boundaries[2], &game->entities[2].body, &game->entities[3].body};
+
+
         do{
             Entity newBall = currentBall;
             newBall.body.pos += currentBall.ball.dir*remainAdvance;
             bool collision = false;
             for(i32 i = 0; i < ARRAYSIZE(bouncers) && !collision; i++){
+                ASSERT(!collide(originalBall.body, *bouncers[i]));
                 if (collide(newBall.body, *bouncers[i])){
                     collision = true;
                     v2 pop = collidePop(newBall.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
@@ -364,7 +387,106 @@ void gameFixedStep(f64 dt){
         ASSERT(remainAdvance <= 0.0000005f);
         game->entities[1] = currentBall;
         game->entities[1].vel = currentBall.ball.dir * length(game->entities[1].vel);
+#endif
+        f32 remainAdvance = length(game->entities[1].vel)*CAST(f32, dt);
+        i32 bounces = 1000;
+        CollisionRectAxisAligned * bouncers[2] = {&game->boundaries[0], &game->boundaries[2]};
+        CollisionRectAxisAligned * players[2] = {&game->entities[2].body, &game->entities[3].body};
+
+        Entity currentBall = game->entities[1];
+        // 0) Do movement
+        // 1) collide against player and pop
+        // 2) collide against bouncers and pop
+        // 3) if collide with player -> pop player & stop
+        // 4) goto 0) with remaining movement or stop after 5 iterations
+        do{
+            Entity newBall = currentBall;
+            // 0)
+            newBall.body.pos += currentBall.ball.dir*remainAdvance;
+            // 1)
+            bool collision = false;
+            for(i32 i = 0; i < ARRAYSIZE(players); i++){
+                if (collide(newBall.body, *players[i])){
+                    collision = true;
+
+                    bool reflect = length(game->entities[i+2].vel) < 0.0005f || dot(currentBall.ball.dir, game->entities[i+2].vel) <= 0;
+                    v2 pop = collidePop(newBall.body, *players[i], (1-(2*reflect))*(currentBall.ball.dir*remainAdvance));
+                    currentBall.body.pos = newBall.body.pos + pop;
+                    if (reflect)
+                    {
+                        currentBall.ball.dir = collideReflect(currentBall.body, *players[i], currentBall.ball.dir);
+                    }
+                    ASSERT(!collide(currentBall.body, *players[i]));
+                    remainAdvance = clamp(length(pop), 0.0f, remainAdvance);
+                    bounces--;
+                    playAudio(&game->track);
+                    // players start at index 2
+                    // currentBall.ball.acc = game->entities[i + 2].vel/CAST(f32, dt);
+                    newBall = currentBall;
+                    break;
+                }
+            }
+
+            // 2)
+            for(i32 i = 0; i < ARRAYSIZE(bouncers); i++){
+                if (collide(newBall.body, *bouncers[i])){
+                    collision = true;
+                    v2 pop = collidePop(newBall.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
+                    currentBall.body.pos = newBall.body.pos + pop;
+                    currentBall.ball.dir = collideReflect(currentBall.body, *bouncers[i], currentBall.ball.dir);
+                    ASSERT(!collide(currentBall.body, *bouncers[i]));
+                    remainAdvance = clamp(length(pop), 0.0f, remainAdvance);
+                    bounces--;
+                    playAudio(&game->track);
+                    newBall = currentBall;
+                    break;
+                }
+            }
+
+            // 3)
+            for(i32 i = 0; i < ARRAYSIZE(players); i++){
+                if (collide(newBall.body, *players[i])){
+                    collision = true;
+                    v2 pop = collidePop(newBall.body, *players[i], -(currentBall.ball.dir*remainAdvance));
+                    currentBall = newBall;
+                    // players start at index 2
+                    game->entities[i + 2].body.pos -= pop;
+                    ASSERT(!collide(currentBall.body, *players[i]));
+                    currentBall.vel = V2(0, 0);
+                    currentBall.ball.acc = V2(0, 0);
+                    remainAdvance = 0;
+                    bounces--;
+                    break;
+                }
+            }
+
+            if (!collision){
+                remainAdvance = 0;
+                currentBall = newBall;
+                if(collide(newBall.body, game->boundaries[1])){
+                    game->entities[3].player.score += 1;
+                    game->entities[1].vel = V2(0, 0);
+                    game->entities[1].body.pos = V2(0, 0);
+                    game->entities[3].vel = V2(0, 0);
+                    return;
+                }
+                else if(collide(newBall.body, game->boundaries[3])){
+                    game->entities[2].player.score += 1;
+                    game->entities[1].vel = V2(0, 0);
+                    game->entities[1].body.pos = V2(0, 0);
+                    game->entities[3].vel = V2(0, 0);
+                    return;
+                }
+            }
+
+        } while (remainAdvance >= 0.0000005f && bounces > 0);
+
+        ASSERT(remainAdvance <= 0.0000005f);
+        game->entities[1] = currentBall;
+        game->entities[1].vel = currentBall.ball.dir * length(game->entities[1].vel);
+
     }
+
 }
 
 Game gameInterpolateSteps(Game * from, Game * to, f32 t)

@@ -76,7 +76,7 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
         Entity * entity = &game->entities[i];
         glUniform4f(gl->game.overlayColorLocation, entity->overlayColor.x, entity->overlayColor.y, entity->overlayColor.z, entity->overlayColor.w);
 
-        CollisionRect * body = &entity->body;
+        CollisionRectAxisAligned * body = &entity->body;
         mat3 model =  scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
         if (i == 2 || i == 3){
             model = rotationYMatrix3(entity->player.rotationYRad) * model;
@@ -130,7 +130,7 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
     }
     for(i32 i = 0; i < ARRAYSIZE(game->boundaries); i++)
     {
-        CollisionRect * body = &game->boundaries[i];
+        CollisionRectAxisAligned * body = &game->boundaries[i];
         mat3 model = scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
         glUniformMatrix3fv(gl->wire.modelMatrixLocation, 1, true, model.c);
 

@@ -475,7 +475,7 @@ int main(LPWSTR * argvW, int argc) {
         controllerH.slotIndex = 0;
         controllerH.sequence = controllers[0].sequence;
 
-        controllerInit = controllerInit && setUpAndUseController(&controllerH);
+        controllerInit = controllerInit && setUpController(&controllerH);
         ASSERT(controllerInit);
 
         f64 currentTime = getProcessCurrentTime();
@@ -516,14 +516,16 @@ int main(LPWSTR * argvW, int argc) {
                 DispatchMessage(&msg);
             }
 
-            bool pollSuccess = pollInput(&controllerH);
-            ASSERT(pollSuccess);
-            state = getControllerState(&controllerH);
-            ASSERT(state != NULL);
-            //printf("dpad %f %x\n", CAST(f32, state->dpad.val), state->dpad.val);
-            //joy.x = state->position.x;
-            //joy.y = state->position.y;
-
+            if (useController(&controllerH))
+            {
+                bool pollSuccess = pollInput(&controllerH);
+                ASSERT(pollSuccess);
+                state = getControllerState(&controllerH);
+                ASSERT(state != NULL);
+            }else
+            {
+                state = NULL;
+            }
             
             gameHandleInput();
             while(accumulator >= FIXED_STEP){
