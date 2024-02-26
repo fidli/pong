@@ -291,7 +291,7 @@ void gameFixedStep(f64 dt){
 
     f32 g = 10.0; // m / s^2
     f32 grassFrictionCoef = 10.0f;
-    if (length(player1->vel) != 0){
+    if (!isTiny(player1->vel)){
         f32 FnPlayer = player1->mass * g;
         f32 FfrictionPlayer = grassFrictionCoef * FnPlayer;
         playerForces += -1*normalize(player1->vel)*FfrictionPlayer;
@@ -300,7 +300,7 @@ void gameFixedStep(f64 dt){
     v2 oldVelocity = player1->vel;
     v2 acc = playerForces / player1->mass;
     player1->vel += acc * CAST(f32, dt);
-    if (dot(oldVelocity, player1->vel) < 0 || length(player1->vel) < 0.005f){
+    if (dot(oldVelocity, player1->vel) < 0 || isTiny(player1->vel)){
         player1->vel = V2(0, 0);
         player1->animation = findAnimation("pig-idle");
     }
@@ -327,7 +327,7 @@ void gameFixedStep(f64 dt){
                 if (collide(player->player.body, game->boundaries[bi])){
                     intoDirection = collidePop(player->player.body, game->boundaries[bi], -intoDirection);
                     player->player.body.pos += intoDirection;
-                    if (length(intoDirection) <= 0.005f)
+                    if (isTiny(intoDirection))
                     {
                         retest = false;
                     }
@@ -339,11 +339,11 @@ void gameFixedStep(f64 dt){
                 }
             }
             bounces--;
-        }while(bounces && retest && length(intoDirection) > 0.005f);
+        }while(bounces && retest && !isTiny(intoDirection));
         
     }
 
-    if(length(ball->vel) == 0)
+    if(isTiny(ball->vel))
     {
         ball->ball.body.pos = player1->player.body.pos + player1->player.dir * ((length(player1->player.body.size) + length(ball->ball.body.size))/2.0f);
     }
@@ -352,7 +352,7 @@ void gameFixedStep(f64 dt){
     f32 FnBall = ballWeight * g;
     f32 FfrictionBall = 0 * 0.08f * FnBall;
     ball->ball.acc -= normalize(ball->ball.dir)*(FfrictionBall / ballWeight);
-    if((player1->player.action & (1 << GameAction_Kick)) && length(ball->vel) == 0.0f)
+    if((player1->player.action & (1 << GameAction_Kick)) && isTiny(ball->vel))
     {
         f32 force = 50000.0f;
         ball->ball.dir = player1->player.dir;
@@ -370,12 +370,13 @@ void gameFixedStep(f64 dt){
     }
     ball->ball.acc = V2(0, 0);
     
-    if (length(ball->vel) > 0){
+    if (!isTiny(ball->vel)){
         f32 remainAdvance = length(ball->vel)*CAST(f32, dt);
-        i32 bounces = 5;
+        i32 bounces = 6;
         CollisionRectAxisAligned * bouncers[2] = {&game->boundaries[0], &game->boundaries[2]};
 
         Entity currentBall = *ball;
+        Entity lastBall = currentBall;
         // 0) Do movement
         // 1) collide against player and pop
         // 2) collide against bouncers and pop
@@ -393,7 +394,7 @@ void gameFixedStep(f64 dt){
                 if (collide(newBall.ball.body, *playerBody)){
                     collision = true;
 
-                    bool reflect = length(player->vel) < 0.0005f || dot(currentBall.ball.dir, player->vel) <= 0;
+                    bool reflect = isTiny(player->vel) || dot(currentBall.ball.dir, player->vel) <= 0;
                     v2 pop = collidePop(newBall.ball.body, *playerBody, (1-(2*reflect))*(currentBall.ball.dir*remainAdvance));
                     currentBall.ball.body.pos = newBall.ball.body.pos + pop;
                     if (reflect)
@@ -410,7 +411,7 @@ void gameFixedStep(f64 dt){
             }
 
             // 2)
-            for(i32 i = 0; i < ARRAYSIZE(bouncers); i++){
+            for(i32 i = 0; i < ARRAYSIZE(bouncers) && !isTiny(remainAdvance); i++){
                 if (collide(newBall.ball.body, *bouncers[i])){
                     collision = true;
                     v2 pop = collidePop(newBall.ball.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
@@ -463,9 +464,11 @@ void gameFixedStep(f64 dt){
                 }
             }
 
-        } while (remainAdvance >= 0.0000005f && bounces > 0);
+        } while (!isTiny(remainAdvance) && bounces > 0);
 
-        ASSERT(remainAdvance <= 0.0000005f);
+        // Non tiny remain advance can remain, however that means the ball & player are clutched
+        // which is solved by 5 bounces and then stops
+
         *ball = currentBall;
         ball->vel = currentBall.ball.dir * length(ball->vel);
 
