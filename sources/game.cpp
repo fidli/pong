@@ -49,7 +49,7 @@ struct Entity {
 
     union {
         struct {
-            CollisionRectAxisAligned body;
+            CollisionCircle body;
             u8 score;
             u32 action;
             PlayerInput input;
@@ -59,7 +59,7 @@ struct Entity {
             f32 angularVel;
         } player;
         struct {
-            CollisionRectAxisAligned body;
+            CollisionCircle body;
             v2 dir;
             v2 acc;
         } ball;
@@ -98,8 +98,8 @@ void gameInit(AudioTrack track){
     field->block.body.size = V2(170.0f, 90.0f);
     field->block.body.pos = V2(0.0f, 0.0f);
 
-    player1->player.body.size = V2(6.0f, 6.0f);
-    player1->player.body.pos = field->block.body.pos + V2(-field->block.body.size.x/2 + player1->player.body.size.x/2.0f, 0);
+    player1->player.body.radius = 3.0f;
+    player1->player.body.pos = field->block.body.pos + V2(-field->block.body.size.x/2 + player1->player.body.radius, 0);
     player1->mass = 80.0f;
     player1->player.dir = V2(1.0f, 0);
     player1->player.wantDir = player1->player.dir;
@@ -107,16 +107,16 @@ void gameInit(AudioTrack track){
     
     
 
-    player2->player.body.size = V2(6.0f, 6.0f);
-    player2->player.body.pos = field->block.body.pos + V2(field->block.body.size.x/2, 0) - player2->player.body.size/2.0f;
+    player2->player.body.radius = 3.0f;
+    player2->player.body.pos = field->block.body.pos + V2(field->block.body.size.x/2, 0) - V2(player2->player.body.radius, player2->player.body.radius);
     player2->mass = 80.0f;
     player2->player.dir = V2(-1.0f, 0);
     player2->player.rotationYRad = degToRad(0);
     player2->player.wantDir = player2->player.dir;
     player1->animation = player2->animation = findAnimation("pig-idle");
 
-    ball->ball.body.size = V2(1.0f, 1.0f);
-    ball->ball.body.pos = player1->player.body.pos + player1->player.dir * ((length(player1->player.body.size) + length(ball->ball.body.size))/2.0f);
+    ball->ball.body.radius = 0.5f;
+    ball->ball.body.pos = player1->player.body.pos + player1->player.dir * (player1->player.body.radius + ball->ball.body.radius);
     ball->ball.dir = player1->player.dir;
     ball->vel = V2(0, 0);
     ball->mass = 5.0f;
@@ -345,7 +345,7 @@ void gameFixedStep(f64 dt){
 
     if(isTiny(ball->vel))
     {
-        ball->ball.body.pos = player1->player.body.pos + player1->player.dir * ((length(player1->player.body.size) + length(ball->ball.body.size))/2.0f);
+        ball->ball.body.pos = player1->player.body.pos + player1->player.dir * (player1->player.body.radius + ball->ball.body.radius);
     }
 
     f32 ballWeight = 1.0; // kG
@@ -390,7 +390,7 @@ void gameFixedStep(f64 dt){
             bool collision = false;
             for(i32 i = 0; i < ARRAYSIZE(players); i++){
                 Entity* player = players[i];
-                CollisionRectAxisAligned* playerBody = &player->player.body;
+                CollisionCircle* playerBody = &player->player.body;
                 if (collide(newBall.ball.body, *playerBody)){
                     collision = true;
 
@@ -429,7 +429,7 @@ void gameFixedStep(f64 dt){
             // 3)
             for(i32 i = 0; i < ARRAYSIZE(players); i++){
                 Entity* player = players[i];
-                CollisionRectAxisAligned* playerBody = &player->player.body;
+                CollisionCircle* playerBody = &player->player.body;
                 if (collide(newBall.ball.body, *playerBody)){
                     collision = true;
                     v2 pop = collidePop(newBall.ball.body, *playerBody, -(currentBall.ball.dir*remainAdvance));

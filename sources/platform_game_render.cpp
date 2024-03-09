@@ -37,8 +37,18 @@ struct OpenGL {
 		GLint worldMatrixLocation;
 		GLint projectionMatrixLocation;
 		GLint overlayColorLocation;
+
 	} wire;
 	GLuint quad;
+
+    u32 quadOffset;
+    u32 quadCount;
+    
+    u32 lineboxOffset;
+    u32 lineboxCount;
+
+    u32 linecircleOffset;
+    u32 linecircleCount;
 };
 
 
@@ -82,12 +92,12 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
         {
             case EntityType_Player:
             {
-                scale = scalingMatrix(entity->player.body.size);
+                scale = scalingMatrix(V2(entity->player.body.radius*2, entity->player.body.radius*2));
                 translate = translationMatrix(entity->player.body.pos);
             }break;
             case EntityType_Ball:
             {
-                scale = scalingMatrix(entity->ball.body.size);
+                scale = scalingMatrix(V2(entity->ball.body.radius*2, entity->ball.body.radius*2));
                 translate = translationMatrix(entity->ball.body.pos);
             }break;
             case EntityType_StaticBlock:
@@ -145,22 +155,30 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
         Entity * entity = &game->entities[i];
         mat3 scale;
         mat3 translate;
+        u32 lineOffset;
+        u32 lineCount;
         switch (entity->type)
         {
             case EntityType_Player:
             {
-                scale = scalingMatrix(entity->player.body.size);
+                scale = scalingMatrix(V2(entity->player.body.radius*2, entity->player.body.radius*2));
                 translate = translationMatrix(entity->player.body.pos);
+                lineOffset = gl->linecircleOffset;
+                lineCount = gl->linecircleCount;
             }break;
             case EntityType_Ball:
             {
-                scale = scalingMatrix(entity->ball.body.size);
+                scale = scalingMatrix(V2(entity->ball.body.radius*2, entity->ball.body.radius*2));
                 translate = translationMatrix(entity->ball.body.pos);
+                lineOffset = gl->linecircleOffset;
+                lineCount = gl->linecircleCount;
             }break;
             case EntityType_StaticBlock:
             {
                 scale = scalingMatrix(entity->block.body.size);
                 translate = translationMatrix(entity->block.body.pos);
+                lineOffset = gl->lineboxOffset;
+                lineCount = gl->lineboxCount;
             }break;
             default:
             {
@@ -173,7 +191,7 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
         mat3 world = translate;
         glUniformMatrix3fv(gl->wire.worldMatrixLocation, 1, true, world.c);
 
-        glDrawArrays(GL_LINES, 4, 8);
+        glDrawArrays(GL_LINES, lineOffset, lineCount);
     }
     for(i32 i = 0; i < ARRAYSIZE(game->boundaries); i++)
     {
@@ -184,7 +202,7 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
         mat3 world = translationMatrix(body->pos);
         glUniformMatrix3fv(gl->wire.worldMatrixLocation, 1, true, world.c);
 
-        glDrawArrays(GL_LINES, 4, 8);
+        glDrawArrays(GL_LINES, gl->lineboxOffset, gl->lineboxCount);
     }
 }
 
@@ -194,13 +212,22 @@ static inline void initGameRender() {
 	{
 		glGenBuffers(1, &gl->quad);
 		glBindBuffer(GL_ARRAY_BUFFER, gl->quad);
-		const f32 box[] = {
+        gl->quadOffset = 0;
+        gl->quadCount = 4;
+
+        gl->lineboxOffset = 4;
+        gl->lineboxCount = 8;
+
+        gl->linecircleOffset = 12;
+        const int circlePoints = 97;
+        gl->linecircleCount = circlePoints*2;
+		f32 data[2*4 + 2*8 + 2*2*circlePoints] = {
 			// triangle strip
 			1, 0,// 0.0f, 1.0f,
 			0, 0,// 0.0f, 1.0f,
 			1, 1,// 0.0f, 1.0f,
 			0, 1,//, 0.0f, 1.0f,
-			// lines
+			// lines - box
 			0, 0,
 			0, 1,
 			1, 1,
@@ -209,9 +236,21 @@ static inline void initGameRender() {
 			1, 0,
 			1, 1,
 			0, 1
+			// lines - circle
+            // circlePoints * 2
 		};
+        v2 pointOnCircle = V2(0.5f, 0.0f);
+        f32 radIncr = (2*PI) / CAST(f32, circlePoints);
+        for(i32 i = 0; i < circlePoints; i++)
+        {
+            data[2*4 + 2*8 + i*4] = pointOnCircle.x + 0.5f;
+            data[2*4 + 2*8 + i*4 + 1] = pointOnCircle.y + 0.5f;
+            pointOnCircle = rotate(pointOnCircle, radIncr);
+            data[2*4 + 2*8 + i*4 + 2] = pointOnCircle.x + 0.5f;
+            data[2*4 + 2*8 + i*4 + 3] = pointOnCircle.y + 0.5f;
+        }
 
-		glBufferData(GL_ARRAY_BUFFER, sizeof(box), box, GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(data), data, GL_STATIC_DRAW);
 	}
 	// vsync disable
 	wglSwapIntervalEXT(0);
