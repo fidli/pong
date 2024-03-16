@@ -124,6 +124,10 @@ void gameInit(AudioTrack track){
     game->boundaries[0].size = V2(field->block.body.size.x, 10.0f);
     game->boundaries[0].pos = field->block.body.pos + V2(0, field->block.body.size.y/2 + game->boundaries[0].size.y/2.0f);
 
+    // HERE
+    game->boundaries[0].size = V2(player1->player.body.radius*2,player1->player.body.radius*2);
+    game->boundaries[0].pos = player1->player.body.pos + V2(10,0);
+
     game->boundaries[1].size = V2(10.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
     game->boundaries[1].pos = field->block.body.pos + V2(-field->block.body.size.x/2 - game->boundaries[1].size.x/2.0f, 0);
 
@@ -317,29 +321,30 @@ void gameFixedStep(f64 dt){
         Entity* player = players[pi];
         i32 bounces = 5;
         bool retest = false;
-        v2 intoDirection = player->vel;
-        f32 remainAdvance = CAST(f32, dt); 
+        v2 advance = player->vel * CAST(f32, dt);
         do{
-            player->player.body.pos += intoDirection * remainAdvance;
+            player->player.body.pos += advance;
             retest = false;
             for(i32 bi = 0; bi < ARRAYSIZE(game->boundaries) && !retest; bi++)
             {
                 if (collide(player->player.body, game->boundaries[bi])){
-                    intoDirection = collidePop(player->player.body, game->boundaries[bi], -intoDirection);
-                    player->player.body.pos += intoDirection;
-                    if (isTiny(intoDirection))
+                    v2 pop = collidePop(player->player.body, game->boundaries[bi], -advance);
+                    player->player.body.pos += pop;
+                    f32 originalMoveLength = length(advance);
+                    f32 popLength = length(pop);
+                    advance = MIN(originalMoveLength, popLength) * normalize(player->vel);
+                    if (isTiny(advance))
                     {
                         retest = false;
                     }
                     else{
-                        intoDirection = collideSlide(player->player.body, game->boundaries[bi], -1*intoDirection);
-                        remainAdvance = 1;
+                        advance = collideSlide(player->player.body, game->boundaries[bi], advance);
                         retest = true;
                     }
                 }
             }
             bounces--;
-        }while(bounces && retest && !isTiny(intoDirection));
+        }while(bounces && retest && !isTiny(advance));
         
     }
 
