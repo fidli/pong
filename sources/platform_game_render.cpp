@@ -219,7 +219,8 @@ static inline void initGameRender() {
         gl->lineboxCount = 8;
 
         gl->linecircleOffset = 12;
-        const int circlePoints = 97;
+        // 41 looks good enough even on big circles
+        const int circlePoints = 41;
         gl->linecircleCount = circlePoints*2;
 		f32 data[2*4 + 2*8 + 2*2*circlePoints] = {
 			// triangle strip
