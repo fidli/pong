@@ -51,6 +51,32 @@ struct OpenGL {
     u32 linecircleCount;
 };
 
+void makeQuad(GLModel* target, v2 scale)
+{
+    target->scale = scale;
+    target->pos = V2(-0.5f, -0.5f);
+    target->glType = GL_TRIANGLE_STRIP;
+    target->glOffset = gl->quadOffset;
+    target->glCount = gl->quadCount;
+}
+
+void makeLinebox(GLModel* target, v2 scale)
+{
+    target->scale = scale;
+    target->pos = V2(-0.5f, -0.5f);
+    target->glType = GL_LINES;
+    target->glOffset = gl->lineboxOffset;
+    target->glCount = gl->lineboxCount;
+}
+
+void makeLinecircle(GLModel* target, v2 scale)
+{
+    target->scale = scale;
+    target->pos = V2(-0.5f, -0.5f);
+    target->glType = GL_LINES;
+    target->glOffset = gl->linecircleOffset;
+    target->glCount = gl->linecircleCount;
+}
 
 static inline void initGameShader() {
 	gl->game.modelMatrixLocation = glGetUniformLocation(gl->game.program, "modelMatrix");
@@ -86,32 +112,11 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
         Entity * entity = &game->entities[i];
         glUniform4f(gl->game.overlayColorLocation, entity->overlayColor.x, entity->overlayColor.y, entity->overlayColor.z, entity->overlayColor.w);
 
-        mat3 scale;
-        mat3 translate;
-        switch (entity->type)
+        mat3 scale = scalingMatrix(entity->model.scale);
+        mat3 translate = translationMatrix(entity->pos);
+        mat3 model =  scale * translationMatrix(entity->model.pos);
+        if (entity->type == EntityType_Player)
         {
-            case EntityType_Player:
-            {
-                scale = scalingMatrix(V2(entity->player.body.radius*2, entity->player.body.radius*2));
-                translate = translationMatrix(entity->player.body.pos);
-            }break;
-            case EntityType_Ball:
-            {
-                scale = scalingMatrix(V2(entity->ball.body.radius*2, entity->ball.body.radius*2));
-                translate = translationMatrix(entity->ball.body.pos);
-            }break;
-            case EntityType_StaticBlock:
-            {
-                scale = scalingMatrix(entity->block.body.size);
-                translate = translationMatrix(entity->block.body.pos);
-            }break;
-            default:
-            {
-                INV;
-            }break;
-        }
-        mat3 model =  scale * translationMatrix(V2(-0.5f, -0.5f));
-        if (i == 2 || i == 3){
             model = rotationYMatrix3(entity->player.rotationYRad) * model;
         }
         glUniformMatrix3fv(gl->game.modelMatrixLocation, 1, true, model.c);
@@ -142,7 +147,7 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
             glBindTexture(GL_TEXTURE_2D, 0);
         }
 
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glDrawArrays(entity->model.glType, entity->model.glOffset, entity->model.glCount);
     }
     
 
@@ -153,56 +158,29 @@ void glRenderGame(Game * state, v2 resolutionScale, mat3 * projection){
     for(i32 i = 0; i < ARRAYSIZE(game->entities); i++)
     {
         Entity * entity = &game->entities[i];
-        mat3 scale;
-        mat3 translate;
-        u32 lineOffset;
-        u32 lineCount;
-        switch (entity->type)
-        {
-            case EntityType_Player:
-            {
-                scale = scalingMatrix(V2(entity->player.body.radius*2, entity->player.body.radius*2));
-                translate = translationMatrix(entity->player.body.pos);
-                lineOffset = gl->linecircleOffset;
-                lineCount = gl->linecircleCount;
-            }break;
-            case EntityType_Ball:
-            {
-                scale = scalingMatrix(V2(entity->ball.body.radius*2, entity->ball.body.radius*2));
-                translate = translationMatrix(entity->ball.body.pos);
-                lineOffset = gl->linecircleOffset;
-                lineCount = gl->linecircleCount;
-            }break;
-            case EntityType_StaticBlock:
-            {
-                scale = scalingMatrix(entity->block.body.size);
-                translate = translationMatrix(entity->block.body.pos);
-                lineOffset = gl->lineboxOffset;
-                lineCount = gl->lineboxCount;
-            }break;
-            default:
-            {
-                INV;
-            }break;
-        }
-        mat3 model = scale * translationMatrix(V2(-0.5f, -0.5f));
+        mat3 scale = scalingMatrix(entity->wire.scale);
+        mat3 translate = translationMatrix(entity->pos);
+        mat3 model = scale * translationMatrix(entity->wire.pos);
         glUniformMatrix3fv(gl->wire.modelMatrixLocation, 1, true, model.c);
 
         mat3 world = translate;
         glUniformMatrix3fv(gl->wire.worldMatrixLocation, 1, true, world.c);
 
-        glDrawArrays(GL_LINES, lineOffset, lineCount);
+        glDrawArrays(entity->wire.glType, entity->wire.glOffset, entity->wire.glCount);
     }
+
     for(i32 i = 0; i < ARRAYSIZE(game->boundaries); i++)
     {
-        CollisionRectAxisAligned * body = &game->boundaries[i];
-        mat3 model = scalingMatrix(body->size) * translationMatrix(V2(-0.5f, -0.5f));
+        Entity * entity = &game->boundaries[i];
+        mat3 scale = scalingMatrix(entity->wire.scale);
+        mat3 translate = translationMatrix(entity->pos);
+        mat3 model = scale * translationMatrix(entity->wire.pos);
         glUniformMatrix3fv(gl->wire.modelMatrixLocation, 1, true, model.c);
 
-        mat3 world = translationMatrix(body->pos);
+        mat3 world = translate;
         glUniformMatrix3fv(gl->wire.worldMatrixLocation, 1, true, world.c);
 
-        glDrawArrays(GL_LINES, gl->lineboxOffset, gl->lineboxCount);
+        glDrawArrays(entity->wire.glType, entity->wire.glOffset, entity->wire.glCount);
     }
 }
 
@@ -285,7 +263,7 @@ inline void render(Game * state, f64 dt) {
 	// NOTE(fidli): gui calibrated to 1080p;
 	v2 resolutionScale = V2(platform->resolution.x / 1920.0f, platform->resolution.y / 1080.0f);
     f32 ditch = 10.0f;
-    mat3 projection = ortoProjectionMatrix(field->block.body.size + V2(ditch, ditch), platform->resolution);
+    mat3 projection = ortoProjectionMatrix(field->model.scale + V2(ditch, ditch), platform->resolution);
     glRenderGame(state, resolutionScale, &projection);
 
 	{//gui

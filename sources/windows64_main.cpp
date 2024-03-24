@@ -1,4 +1,10 @@
+#if 0
+#define PRECISE_MATH
+#define CRT_PRESENT
+#define _CRT_SECURE_NO_WARNINGS
+#else
 #include "platform/windows_nocrt.h"
+#endif
 #include <Windows.h>
 #include <dwmapi.h>
 #include "platform/windows_types.h"
@@ -237,6 +243,9 @@ void profileMemcpy(u8 * mem, u8 * mem2, nint size)
 int main(LPWSTR * argvW, int argc) {
     (void)argvW;
     (void)argc;
+#ifdef CRT_PRESENT
+    hInstance = GetModuleHandle(NULL);
+#endif
     LPVOID memoryStart = VirtualAlloc(NULL, TEMP_MEM + PERSISTENT_MEM, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
     if (memoryStart) {

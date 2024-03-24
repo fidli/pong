@@ -37,19 +37,34 @@ enum EntityType
     EntityTypeCount
 };
 
+struct GLModel
+{
+    v2 scale;
+    v2 pos;
+
+    GLint glType;
+    GLint glOffset;
+    GLint glCount;
+};
+
 struct Entity {
 
     EntityType type;
     f32 mass;
 
+    v2 size;
+    v2 pos;
     v2 vel;
 
     Animation * animation;
     v4 overlayColor;
+    ConvexHull body;
+
+    GLModel model;
+    GLModel wire;
 
     union {
         struct {
-            CollisionCircle body;
             u8 score;
             u32 action;
             PlayerInput input;
@@ -57,15 +72,12 @@ struct Entity {
             v2 wantDir;
             f32 rotationYRad;
             f32 angularVel;
+            
         } player;
         struct {
-            CollisionCircle body;
             v2 dir;
             v2 acc;
         } ball;
-        struct {
-            CollisionRectAxisAligned body;
-        } block;
     };
     
 };
@@ -78,11 +90,15 @@ struct Game {
 
     AudioTrack track;
 
-    CollisionRectAxisAligned boundaries[6];
+    Entity boundaries[6];
     Entity entities[4];
 };
 
 extern Game * game;
+
+void makeQuad(GLModel* target, v2 scale);
+void makeLinebox(GLModel* target, v2 scale);
+void makeLinecircle(GLModel* target, v2 scale);
 
 void gameInit(AudioTrack track){
 
@@ -95,55 +111,147 @@ void gameInit(AudioTrack track){
     Entity* player2 = &game->entities[3];
     player2->type = EntityType_Player;
 
-    field->block.body.size = V2(170.0f, 90.0f);
-    field->block.body.pos = V2(0.0f, 0.0f);
+    {
+        field->size = V2(170.0f, 90.0f);
+        field->pos = V2(0.0f, 0.0f);
 
-    player1->player.body.radius = 3.0f;
-    player1->player.body.pos = field->block.body.pos + V2(-field->block.body.size.x/2 + player1->player.body.radius, 0);
-    player1->mass = 80.0f;
-    player1->player.dir = V2(1.0f, 0);
-    player1->player.wantDir = player1->player.dir;
-    player1->player.rotationYRad = degToRad(180);
-    
-    
+        makeQuad(&field->model, field->size);
+        makeLinebox(&field->wire, field->size);
+        field->overlayColor = V4(0, 1, 0, 0.1f);
 
-    player2->player.body.radius = 3.0f;
-    player2->player.body.pos = field->block.body.pos + V2(field->block.body.size.x/2, 0) - V2(player2->player.body.radius, player2->player.body.radius);
-    player2->mass = 80.0f;
-    player2->player.dir = V2(-1.0f, 0);
-    player2->player.rotationYRad = degToRad(0);
-    player2->player.wantDir = player2->player.dir;
+        field->body.points = &PPUSHA(v2, 4);
+        makeRectConvexHull(&field->body, V2(0,0), field->size);
+    }
+
+    {
+        player1->size = V2(6.0f, 6.0f);
+        player1->pos = field->pos + V2(-field->size.x/2.0f + player1->size.x/2.0f + 1.0f, 0);
+        player1->player.dir = V2(1.0f, 0);
+        player1->player.wantDir = player1->player.dir;
+        player1->player.rotationYRad = degToRad(180);
+        player1->mass = 80.0f;
+
+        makeQuad(&player1->model, player1->size);
+        makeLinecircle(&player1->wire, player1->size);
+
+        player1->body.points = &PPUSHA(v2, 41);
+        // HERE
+        makeCircleConvexHull(&player1->body, V2(0,0), player1->size.x/2.0f);
+        //makeRectConvexHull(&player1->body, V2(0,0), player1->size);
+    }
+
+    {
+        player2->size = V2(6.0f, 6.0f);
+        player2->pos = field->pos + V2(field->size.x/2  - player2->size.x/2.0f - 1.0f, 0.0f);
+        player2->player.dir = V2(-1.0f, 0);
+        player2->player.wantDir = player2->player.dir;
+        player2->player.rotationYRad = 0;//degToRad(0);
+        player2->mass = 80.0f;
+
+        makeQuad(&player2->model, player2->size);
+        makeLinecircle(&player2->wire, player2->size);
+
+        player2->body.points = &PPUSHA(v2, 41);
+        makeCircleConvexHull(&player2->body, V2(0,0), player2->size.x/2.0f);
+    }
+
     player1->animation = player2->animation = findAnimation("pig-idle");
+    
 
-    ball->ball.body.radius = 0.5f;
-    ball->ball.body.pos = player1->player.body.pos + player1->player.dir * (player1->player.body.radius + ball->ball.body.radius);
-    ball->ball.dir = player1->player.dir;
-    ball->vel = V2(0, 0);
-    ball->mass = 5.0f;
+    {
 
-    game->boundaries[0].size = V2(field->block.body.size.x, 10.0f);
-    game->boundaries[0].pos = field->block.body.pos + V2(0, field->block.body.size.y/2 + game->boundaries[0].size.y/2.0f);
+        ball->size = V2(1.0f, 1.0f);
+        ball->pos = player1->pos + player1->player.dir * ((player1->size.x + ball->size.x)/2.0f);
+        ball->ball.dir = player1->player.dir;
+        ball->vel = V2(0, 0);
+        ball->mass = 5.0f;
 
+        makeLinecircle(&ball->model, ball->size);
+        makeLinecircle(&ball->wire, ball->size);
+
+        ball->body.points = &PPUSHA(v2, 41);
+        makeCircleConvexHull(&ball->body, V2(0,0), ball->size.x/2.0f);
+    }
+
+    {
+        Entity* entity = &game->boundaries[0];
+        /*
+        entity->size = V2(field->size.x, 10.0f);
+        entity->type = EntityType_StaticBlock;
+        entity->pos = field->pos + V2(0, field->size.y/2 +entity->size.y/2.0f);
+        makeQuad(&entity->model, entity->size);
+        makeLinebox(&entity->wire, entity->size);
+
+        entity->body.points = &PPUSHA(v2, 4);
+        makeRectConvexHull(&entity->body, V2(0,0), entity->size);
+        */
     // HERE
-    game->boundaries[0].size = V2(player1->player.body.radius*2,player1->player.body.radius*2);
-    game->boundaries[0].pos = player1->player.body.pos + V2(10,0);
+        entity->size = V2(10.0f, 10.0f);
+        entity->type = EntityType_StaticBlock;
+        entity->pos = player1->pos + V2(10.0f, 0.0f);
+        makeQuad(&entity->model, entity->size);
+        makeLinebox(&entity->wire, entity->size);
 
-    game->boundaries[1].size = V2(10.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
-    game->boundaries[1].pos = field->block.body.pos + V2(-field->block.body.size.x/2 - game->boundaries[1].size.x/2.0f, 0);
+        entity->body.points = &PPUSHA(v2, 4);
+        makeRectConvexHull(&entity->body, V2(0,0), entity->size);
+    }
 
-    game->boundaries[2].size = V2(field->block.body.size.x, 10.0f);
-    game->boundaries[2].pos = field->block.body.pos + V2(0, -field->block.body.size.y/2 - game->boundaries[2].size.y/2.0f);
+    {
+        Entity* entity = &game->boundaries[1];
+        entity->size = V2(10.0f, field->size.y + 20.0f);
+        entity->type = EntityType_StaticBlock;
+        entity->pos = field->pos + V2(-field->size.x/2 -entity->size.x/2.0f, 0);
+        makeQuad(&entity->model, entity->size);
+        makeLinebox(&entity->wire, entity->size);
 
-    game->boundaries[3].size = V2(10.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
-    game->boundaries[3].pos = field->block.body.pos + V2(field->block.body.size.x/2 + game->boundaries[1].size.x/2.0f, 0);
+        entity->body.points = &PPUSHA(v2, 4);
+        makeRectConvexHull(&entity->body, V2(0,0), entity->size);
+    }
+    {
+        Entity* entity = &game->boundaries[2];
+        entity->size = V2(field->size.x, 10.0f);
+        entity->type = EntityType_StaticBlock;
+        entity->pos = field->pos + V2(0, -field->size.y/2 -entity->size.y/2.0f);
+        makeQuad(&entity->model, entity->size);
+        makeLinebox(&entity->wire, entity->size);
 
-    game->boundaries[4].size = V2(2.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
-    game->boundaries[4].pos = field->block.body.pos + V2(-field->block.body.size.x/2 + field->block.body.size.x/5 - game->boundaries[1].size.x/2.0f, 0);
+        entity->body.points = &PPUSHA(v2, 4);
+        makeRectConvexHull(&entity->body, V2(0,0), entity->size);
+    }
+    {
+        Entity* entity = &game->boundaries[3];
+        entity->size = V2(10.0f, field->size.y + 20.0f);
+        entity->type = EntityType_StaticBlock;
+        entity->pos = field->pos + V2(field->size.x/2 +entity->size.x/2.0f, 0);
+        makeQuad(&entity->model, entity->size);
+        makeLinebox(&entity->wire, entity->size);
 
-    game->boundaries[5].size = V2(2.0f, field->block.body.size.y + game->boundaries[0].size.y*2);
-    game->boundaries[5].pos = field->block.body.pos + V2(field->block.body.size.x/2 - field->block.body.size.x/5 + game->boundaries[1].size.x/2.0f, 0);
+        entity->body.points = &PPUSHA(v2, 4);
+        makeRectConvexHull(&entity->body, V2(0,0), entity->size);
+    }
+    {
+        Entity* entity = &game->boundaries[4];
+        entity->size = V2(2.0f, field->size.y + 20.0f);
+        entity->type = EntityType_StaticBlock;
+        entity->pos = field->pos + V2(-field->size.x/2 + field->size.x/5 - 5.0f, 0);
+        makeQuad(&entity->model, entity->size);
+        makeLinebox(&entity->wire, entity->size);
 
-    field->overlayColor = V4(0, 1, 0, 0.1f);
+        entity->body.points = &PPUSHA(v2, 4);
+        makeRectConvexHull(&entity->body, V2(0,0), entity->size);
+    }
+    {
+        Entity* entity = &game->boundaries[5];
+        entity->size = V2(2.0f, field->size.y + 20.0f);
+        entity->type = EntityType_StaticBlock;
+        entity->pos = field->pos + V2(field->size.x/2.0f - field->size.x/5 + 5.0f, 0);
+        makeQuad(&entity->model, entity->size);
+        makeLinebox(&entity->wire, entity->size);
+
+        entity->body.points = &PPUSHA(v2, 4);
+        makeRectConvexHull(&entity->body, V2(0,0), entity->size);
+    }
+
 
     game->track = track;
 }
@@ -182,8 +290,8 @@ void gameFixedStep(f64 dt){
     {
         i32 steps = 0;
         if (ball->vel.x > 0){
-            v2 newPos = ball->ball.body.pos + ball->vel*float(AI_STEP);
-            f32 distance = newPos.y - player2->player.body.pos.y;
+            v2 newPos = ball->pos + ball->vel*float(AI_STEP);
+            f32 distance = newPos.y - player2->pos.y;
             f32 aiVel = 1.0f;
             steps = MIN(ABS((i32)((distance / aiVel)/dt)), i32(AI_STEP/FIXED_STEP));
             GameAction movement;
@@ -323,13 +431,18 @@ void gameFixedStep(f64 dt){
         bool retest = false;
         v2 advance = player->vel * CAST(f32, dt);
         do{
-            player->player.body.pos += advance;
+            player->pos += advance;
             retest = false;
             for(i32 bi = 0; bi < ARRAYSIZE(game->boundaries) && !retest; bi++)
             {
-                if (collide(player->player.body, game->boundaries[bi])){
-                    v2 pop = collidePop(player->player.body, game->boundaries[bi], -advance);
-                    player->player.body.pos += pop;
+                Entity* boundary = &game->boundaries[bi];
+                if (collide(player->pos, &player->body, boundary->pos, &boundary->body)){
+                    player->pos -= advance;
+                    retest = false;
+                    break;
+                    /*
+                    v2 pop = collidePop(&player->body, &game->boundaries[bi].body, -advance);
+                    player->pos += pop;
                     f32 originalMoveLength = length(advance);
                     f32 popLength = length(pop);
                     advance = MIN(originalMoveLength, popLength) * normalize(player->vel);
@@ -338,9 +451,10 @@ void gameFixedStep(f64 dt){
                         retest = false;
                     }
                     else{
-                        advance = collideSlide(player->player.body, game->boundaries[bi], advance);
+                        advance = collideSlide(&player->body, &game->boundaries[bi].body, advance);
                         retest = true;
                     }
+                    */
                 }
             }
             bounces--;
@@ -348,9 +462,11 @@ void gameFixedStep(f64 dt){
         
     }
 
+    /*
+
     if(isTiny(ball->vel))
     {
-        ball->ball.body.pos = player1->player.body.pos + player1->player.dir * (player1->player.body.radius + ball->ball.body.radius);
+        ball->pos = player1->pos + player1->player.dir * (player1->size.x + ball->size.x);
     }
 
     f32 ballWeight = 1.0; // kG
@@ -378,7 +494,7 @@ void gameFixedStep(f64 dt){
     if (!isTiny(ball->vel)){
         f32 remainAdvance = length(ball->vel)*CAST(f32, dt);
         i32 bounces = 6;
-        CollisionRectAxisAligned * bouncers[2] = {&game->boundaries[0], &game->boundaries[2]};
+        Entity * bouncers[2] = {&game->boundaries[0], &game->boundaries[2]};
 
         Entity currentBall = *ball;
         Entity lastBall = currentBall;
@@ -390,23 +506,23 @@ void gameFixedStep(f64 dt){
         do{
             Entity newBall = currentBall;
             // 0)
-            newBall.ball.body.pos += currentBall.ball.dir*remainAdvance;
+            newBall.pos += currentBall.ball.dir*remainAdvance;
             // 1)
             bool collision = false;
             for(i32 i = 0; i < ARRAYSIZE(players); i++){
                 Entity* player = players[i];
-                CollisionCircle* playerBody = &player->player.body;
-                if (collide(newBall.ball.body, *playerBody)){
+                ConvexHull* playerBody = &player->body;
+                if (collide(&newBall.body, playerBody)){
                     collision = true;
 
                     bool reflect = isTiny(player->vel) || dot(currentBall.ball.dir, player->vel) <= 0;
-                    v2 pop = collidePop(newBall.ball.body, *playerBody, (1-(2*reflect))*(currentBall.ball.dir*remainAdvance));
-                    currentBall.ball.body.pos = newBall.ball.body.pos + pop;
+                    v2 pop = collidePop(&newBall.body, playerBody, (1-(2*reflect))*(currentBall.ball.dir*remainAdvance));
+                    currentBall.pos = newBall.pos + pop;
                     if (reflect)
                     {
-                        currentBall.ball.dir = collideReflect(currentBall.ball.body, *playerBody, currentBall.ball.dir);
+                        currentBall.ball.dir = collideReflect(&currentBall.body, playerBody, currentBall.ball.dir);
                     }
-                    ASSERT(!collide(currentBall.ball.body, *playerBody));
+                    ASSERT(!collide(&currentBall.body, playerBody));
                     remainAdvance = clamp(length(pop), 0.0f, remainAdvance);
                     bounces--;
                     playAudio(&game->track);
@@ -417,12 +533,12 @@ void gameFixedStep(f64 dt){
 
             // 2)
             for(i32 i = 0; i < ARRAYSIZE(bouncers) && !isTiny(remainAdvance); i++){
-                if (collide(newBall.ball.body, *bouncers[i])){
+                if (collide(&newBall.body, &bouncers[i]->body)){
                     collision = true;
-                    v2 pop = collidePop(newBall.ball.body, *bouncers[i], -(currentBall.ball.dir*remainAdvance));
-                    currentBall.ball.body.pos = newBall.ball.body.pos + pop;
-                    currentBall.ball.dir = collideReflect(currentBall.ball.body, *bouncers[i], currentBall.ball.dir);
-                    ASSERT(!collide(currentBall.ball.body, *bouncers[i]));
+                    v2 pop = collidePop(&newBall.body, &bouncers[i]->body, -(currentBall.ball.dir*remainAdvance));
+                    currentBall.pos = newBall.pos + pop;
+                    currentBall.ball.dir = collideReflect(&currentBall.body, &bouncers[i]->body, currentBall.ball.dir);
+                    ASSERT(!collide(&currentBall.body, &bouncers[i]->body));
                     remainAdvance = clamp(length(pop), 0.0f, remainAdvance);
                     bounces--;
                     playAudio(&game->track);
@@ -434,14 +550,14 @@ void gameFixedStep(f64 dt){
             // 3)
             for(i32 i = 0; i < ARRAYSIZE(players); i++){
                 Entity* player = players[i];
-                CollisionCircle* playerBody = &player->player.body;
-                if (collide(newBall.ball.body, *playerBody)){
+                ConvexHull* playerBody = &player->body;
+                if (collide(&newBall.body, playerBody)){
                     collision = true;
-                    v2 pop = collidePop(newBall.ball.body, *playerBody, -(currentBall.ball.dir*remainAdvance));
+                    v2 pop = collidePop(&newBall.body, playerBody, -(currentBall.ball.dir*remainAdvance));
                     currentBall = newBall;
                     // players start at index 2
-                    player->player.body.pos -= pop;
-                    ASSERT(!collide(currentBall.ball.body, *playerBody));
+                    player->pos -= pop;
+                    ASSERT(!collide(&currentBall.body, playerBody));
                     currentBall.vel = V2(0, 0);
                     currentBall.ball.acc = V2(0, 0);
                     remainAdvance = 0;
@@ -453,17 +569,17 @@ void gameFixedStep(f64 dt){
             if (!collision){
                 remainAdvance = 0;
                 currentBall = newBall;
-                if(collide(newBall.ball.body, game->boundaries[1])){
+                if(collide(&newBall.body, &game->boundaries[1].body)){
                     player2->player.score += 1;
                     ball->vel = V2(0, 0);
-                    ball->ball.body.pos = V2(0, 0);
+                    ball->pos = V2(0, 0);
                     player2->vel = V2(0, 0);
                     return;
                 }
-                else if(collide(newBall.ball.body, game->boundaries[3])){
+                else if(collide(&newBall.body, &game->boundaries[3].body)){
                     player1->player.score += 1;
                     ball->vel = V2(0, 0);
-                    ball->ball.body.pos = V2(0, 0);
+                    ball->pos = V2(0, 0);
                     player2->vel = V2(0, 0);
                     return;
                 }
@@ -478,6 +594,7 @@ void gameFixedStep(f64 dt){
         ball->vel = currentBall.ball.dir * length(ball->vel);
 
     }
+    */
 
 }
 
@@ -488,16 +605,15 @@ Game gameInterpolateStepsForRendering(Game * from, Game * to, f32 t)
     // 0 is field, no need to lerp/slepr
     for (i32 i = 0; i < ARRAYSIZE(game->entities); i++){
         Entity* entity = &game->entities[i];
+        result.entities[i].pos = lerp(&from->entities[i].pos, &to->entities[i].pos, t);
         switch (entity->type)
         {
             case EntityType_Player:
             {
-                result.entities[i].player.body.pos = lerp(&from->entities[i].player.body.pos, &to->entities[i].player.body.pos, t);
                 result.entities[i].player.dir = slerp(&from->entities[i].player.dir, &to->entities[i].player.dir, t);
             }break;
             case EntityType_Ball:
             {
-                result.entities[i].ball.body.pos = lerp(&from->entities[i].ball.body.pos, &to->entities[i].ball.body.pos, t);
                 result.entities[i].ball.dir = slerp(&from->entities[i].ball.dir, &to->entities[i].ball.dir, t);
             }break;
             case EntityType_StaticBlock:
