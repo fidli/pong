@@ -428,20 +428,18 @@ void gameFixedStep(f64 dt){
     {
         Entity* player = players[pi];
         i32 bounces = 5;
-        bool retest = false;
+        bool retest = true;
         v2 advance = player->vel * CAST(f32, dt);
-        do{
+        while(bounces && retest && !isTiny(advance))
+        {
             player->pos += advance;
             retest = false;
             for(i32 bi = 0; bi < ARRAYSIZE(game->boundaries) && !retest; bi++)
             {
                 Entity* boundary = &game->boundaries[bi];
                 if (collide(player->pos, &player->body, boundary->pos, &boundary->body)){
-                    player->pos -= advance;
-                    retest = false;
-                    break;
-                    /*
-                    v2 pop = collidePop(&player->body, &game->boundaries[bi].body, -advance);
+                    v2 normal = V2(0, 0);
+                    v2 pop = collidePop(player->pos, &player->body, boundary->pos, &boundary->body, -advance, &normal);
                     player->pos += pop;
                     f32 originalMoveLength = length(advance);
                     f32 popLength = length(pop);
@@ -451,15 +449,13 @@ void gameFixedStep(f64 dt){
                         retest = false;
                     }
                     else{
-                        advance = collideSlide(&player->body, &game->boundaries[bi].body, advance);
+                        advance = slide(advance, normal);
                         retest = true;
                     }
-                    */
                 }
             }
             bounces--;
-        }while(bounces && retest && !isTiny(advance));
-        
+        }
     }
 
     /*
