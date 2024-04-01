@@ -175,7 +175,6 @@ void gameInit(AudioTrack track){
 
     {
         Entity* entity = &game->boundaries[0];
-        /*
         entity->size = V2(field->size.x, 10.0f);
         entity->type = EntityType_StaticBlock;
         entity->pos = field->pos + V2(0, field->size.y/2 +entity->size.y/2.0f);
@@ -184,8 +183,8 @@ void gameInit(AudioTrack track){
 
         entity->body.points = &PPUSHA(v2, 4);
         makeRectConvexHull(&entity->body, V2(0,0), entity->size);
-        */
     // HERE
+    /*
         entity->size = V2(10.0f, 10.0f);
         entity->type = EntityType_StaticBlock;
         entity->pos = player1->pos + V2(10.0f, 0.0f);
@@ -194,6 +193,7 @@ void gameInit(AudioTrack track){
 
         entity->body.points = &PPUSHA(v2, 4);
         makeRectConvexHull(&entity->body, V2(0,0), entity->size);
+        */
     }
 
     {
@@ -458,8 +458,6 @@ void gameFixedStep(f64 dt){
         }
     }
 
-    /*
-
     if(isTiny(ball->vel))
     {
         ball->pos = player1->pos + player1->player.dir * (player1->size.x + ball->size.x);
@@ -489,7 +487,7 @@ void gameFixedStep(f64 dt){
     
     if (!isTiny(ball->vel)){
         f32 remainAdvance = length(ball->vel)*CAST(f32, dt);
-        i32 bounces = 6;
+        i32 bounces = 5;
         Entity * bouncers[2] = {&game->boundaries[0], &game->boundaries[2]};
 
         Entity currentBall = *ball;
@@ -508,17 +506,18 @@ void gameFixedStep(f64 dt){
             for(i32 i = 0; i < ARRAYSIZE(players); i++){
                 Entity* player = players[i];
                 ConvexHull* playerBody = &player->body;
-                if (collide(&newBall.body, playerBody)){
+                if (collide(newBall.pos, &newBall.body, player->pos, playerBody)){
                     collision = true;
 
-                    bool reflect = isTiny(player->vel) || dot(currentBall.ball.dir, player->vel) <= 0;
-                    v2 pop = collidePop(&newBall.body, playerBody, (1-(2*reflect))*(currentBall.ball.dir*remainAdvance));
+                    v2 normal = V2(0, 0);
+                    bool volley = isTiny(player->vel) || dot(currentBall.ball.dir, player->vel) <= 0;
+                    v2 pop = collidePop(newBall.pos, &newBall.body, player->pos, playerBody, (1-(2*volley))*(currentBall.ball.dir*remainAdvance), &normal);
                     currentBall.pos = newBall.pos + pop;
-                    if (reflect)
+                    if (volley)
                     {
-                        currentBall.ball.dir = collideReflect(&currentBall.body, playerBody, currentBall.ball.dir);
+                        currentBall.ball.dir = reflect(currentBall.ball.dir, normal);
                     }
-                    ASSERT(!collide(&currentBall.body, playerBody));
+                    ASSERT(!collide(currentBall.pos, &currentBall.body, player->pos, playerBody));
                     remainAdvance = clamp(length(pop), 0.0f, remainAdvance);
                     bounces--;
                     playAudio(&game->track);
@@ -529,12 +528,14 @@ void gameFixedStep(f64 dt){
 
             // 2)
             for(i32 i = 0; i < ARRAYSIZE(bouncers) && !isTiny(remainAdvance); i++){
-                if (collide(&newBall.body, &bouncers[i]->body)){
+                Entity* bouncer = bouncers[i];
+                if (collide(newBall.pos, &newBall.body, bouncer->pos, &bouncer->body)){
                     collision = true;
-                    v2 pop = collidePop(&newBall.body, &bouncers[i]->body, -(currentBall.ball.dir*remainAdvance));
+                    v2 normal = V2(0, 0);
+                    v2 pop = collidePop(newBall.pos, &newBall.body, bouncer->pos, &bouncer->body, -(currentBall.ball.dir*remainAdvance), &normal);
                     currentBall.pos = newBall.pos + pop;
-                    currentBall.ball.dir = collideReflect(&currentBall.body, &bouncers[i]->body, currentBall.ball.dir);
-                    ASSERT(!collide(&currentBall.body, &bouncers[i]->body));
+                    currentBall.ball.dir = reflect(currentBall.ball.dir, normal);
+                    ASSERT(!collide(currentBall.pos, &currentBall.body, bouncer->pos, &bouncer->body));
                     remainAdvance = clamp(length(pop), 0.0f, remainAdvance);
                     bounces--;
                     playAudio(&game->track);
@@ -547,13 +548,14 @@ void gameFixedStep(f64 dt){
             for(i32 i = 0; i < ARRAYSIZE(players); i++){
                 Entity* player = players[i];
                 ConvexHull* playerBody = &player->body;
-                if (collide(&newBall.body, playerBody)){
+                if (collide(newBall.pos, &newBall.body, player->pos, playerBody)){
                     collision = true;
-                    v2 pop = collidePop(&newBall.body, playerBody, -(currentBall.ball.dir*remainAdvance));
+                    v2 normal = V2(0, 0);
+                    v2 pop = collidePop(newBall.pos, &newBall.body, player->pos, &player->body, currentBall.pos - player->pos, &normal);
                     currentBall = newBall;
                     // players start at index 2
                     player->pos -= pop;
-                    ASSERT(!collide(&currentBall.body, playerBody));
+                    ASSERT(!collide(currentBall.pos, &currentBall.body, player->pos, playerBody));
                     currentBall.vel = V2(0, 0);
                     currentBall.ball.acc = V2(0, 0);
                     remainAdvance = 0;
@@ -565,14 +567,14 @@ void gameFixedStep(f64 dt){
             if (!collision){
                 remainAdvance = 0;
                 currentBall = newBall;
-                if(collide(&newBall.body, &game->boundaries[1].body)){
+                if (collide(newBall.pos, &newBall.body, game->boundaries[1].pos, &game->boundaries[1].body)){
                     player2->player.score += 1;
                     ball->vel = V2(0, 0);
                     ball->pos = V2(0, 0);
                     player2->vel = V2(0, 0);
                     return;
                 }
-                else if(collide(&newBall.body, &game->boundaries[3].body)){
+                else if (collide(newBall.pos, &newBall.body, game->boundaries[3].pos, &game->boundaries[3].body)){
                     player1->player.score += 1;
                     ball->vel = V2(0, 0);
                     ball->pos = V2(0, 0);
@@ -590,7 +592,6 @@ void gameFixedStep(f64 dt){
         ball->vel = currentBall.ball.dir * length(ball->vel);
 
     }
-    */
 
 }
 
