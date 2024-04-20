@@ -423,39 +423,66 @@ void gameFixedStep(f64 dt){
 
     // Player collisions against boundaries
     // There is no player to player collision, it should not happen
-    // TODO robust with normals & shapecast
     for(i32 pi = 0; pi < ARRAYSIZE(players); pi++)
     {
         Entity* player = players[pi];
-        i32 bounces = 5;
-        bool retest = true;
-        v2 advance = player->vel * CAST(f32, dt);
-        while(bounces && retest && !isTiny(advance))
+        ConvexHull playerMovementHull;
+        playerMovementHull.count = player->body.count*2;
+        playerMovementHull.points = &PUSHA(v2, playerMovementHull.count);
+        for(u32 p = 0; p < player->body.count; p++)
         {
-            player->pos += advance;
-            retest = false;
-            for(i32 bi = 0; bi < ARRAYSIZE(game->boundaries) && !retest; bi++)
+            playerMovementHull.points[p] = player->body.points[p];
+        }
+        i32 bounces = 5;
+        v2 advance = player->vel * CAST(f32, dt);
+
+        while(bounces && !isTiny(advance) && !isTiny(player->vel))
+        {
+            for(u32 p = player->body.count; p < playerMovementHull.count; p++)
+            {
+                playerMovementHull.points[p] = player->body.points[p-player->body.count] + advance;
+            }
+
+            v2 normal = V2(0, 0);
+            v2 pop = V2(0, 0);
+            f32 popLength = 0;
+            for(i32 bi = 0; bi < ARRAYSIZE(game->boundaries); bi++)
             {
                 Entity* boundary = &game->boundaries[bi];
-                if (collide(player->pos, &player->body, boundary->pos, &boundary->body)){
-                    v2 normal = V2(0, 0);
-                    v2 pop = collidePop(player->pos, &player->body, boundary->pos, &boundary->body, -advance, &normal);
-                    player->pos += pop;
-                    f32 originalMoveLength = length(advance);
-                    f32 popLength = length(pop);
-                    advance = MIN(originalMoveLength, popLength) * normalize(player->vel);
-                    if (isTiny(advance))
+                if (collide(player->pos, &playerMovementHull, boundary->pos, &boundary->body)){
+                    v2 thisNormal = V2(0, 0);
+                    v2 thisPop = collidePop(player->pos, &playerMovementHull, boundary->pos, &boundary->body, -advance, &thisNormal);
+                    ASSERT(dot(thisPop, -advance) > 0);
+                    f32 thisPopLength = length(thisPop);
+                    f32 thisAdvanceLength = length(advance);
+                    if(thisPopLength > thisAdvanceLength)
                     {
-                        retest = false;
+                        // nothing can rewind our movement fully further
+                        pop = -advance;
+                        popLength = thisAdvanceLength;
+                        normal = thisNormal;
+                        break;
                     }
-                    else{
-                        advance = slide(advance, normal);
-                        retest = true;
+                    if (thisPopLength > popLength)
+                    {
+                        pop = thisPop;
+                        popLength = thisPopLength;
+                        normal = thisNormal;
                     }
+
                 }
+            }
+            player->pos += advance + pop;
+            ASSERT(popLength <= length(advance));
+            //advance = MIN(length(advance), popLength) * normalize(player->vel);
+            advance = popLength * normalize(player->vel);
+            if (!isTiny(advance))
+            {
+                advance = slide(advance, normal);
             }
             bounces--;
         }
+        POP;
     }
 
     if(isTiny(ball->vel))
@@ -485,6 +512,209 @@ void gameFixedStep(f64 dt){
     }
     ball->ball.acc = V2(0, 0);
     
+    {
+        Entity currentBall = *ball;
+        f32 remainAdvance = length(ball->vel)*CAST(f32, dt);
+
+        ConvexHull ballMovementHull;
+        ballMovementHull.count = ball->body.count*2;
+        ballMovementHull.points = &PUSHA(v2, ballMovementHull.count);
+
+        i32 bounces = 5;
+        Entity * bouncers[2] = {&game->boundaries[0], &game->boundaries[2]};
+
+        // 0) Make movement convex hull
+        // 1) collide against player and pop, update hulls & positions
+        // 2) collide against bouncers and pop, update hulls & positions
+        // 3) if collide with player directly -> pop player & stop
+        // 4) if movement hull collide with score trigger -> score & new round
+        // 5) if no collision in 1-4, do movement and exit, else goto 0) with remaining movement or stop after 5 iterations
+        while (!isTiny(remainAdvance) && bounces > 0){
+            // 0)
+
+            v2 wantedMovement = currentBall.ball.dir*remainAdvance;
+            for(u32 p = 0; p < ball->body.count; p++)
+            {
+                ballMovementHull.points[p] = currentBall.body.points[p];
+                ballMovementHull.points[p+ball->body.count] = ballMovementHull.points[p] + wantedMovement;
+            }
+            bool collision = false;
+            // 1)
+            {
+                bool thisCollision = false;
+                v2 normal = V2(0, 0);
+                v2 pop = V2(0, 0);
+                f32 popLength = 0;
+                bool volley = true;
+                for(i32 i = 0; i < ARRAYSIZE(players); i++){
+                    Entity* player = players[i];
+                    ConvexHull* playerBody = &player->body;
+                    if (collide(currentBall.pos, &ballMovementHull, player->pos, playerBody)){
+                        // HERE continue
+                        thisCollision = true;
+
+                        v2 thisNormal = V2(0, 0);
+                        bool thisVolley = isTiny(player->vel) || dot(currentBall.ball.dir, player->vel) <= 0;
+                        v2 thisPop = collidePop(currentBall.pos, &ballMovementHull, player->pos, playerBody, (1-(2*volley))*(wantedMovement), &thisNormal);
+
+                        f32 thisPopLength = length(thisPop);
+                        f32 thisAdvanceLength = length(wantedMovement);
+                        if (thisVolley)
+                        {
+                            if(thisPopLength > thisAdvanceLength)
+                            {
+                                // nothing can rewind our movement fully further
+                                pop = -wantedMovement;
+                                popLength = thisAdvanceLength;
+                                normal = thisNormal;
+                                volley = thisVolley;
+                                break;
+                            }
+                        }
+                        if (thisPopLength > popLength)
+                        {
+                            pop = thisPop;
+                            popLength = thisPopLength;
+                            volley = thisVolley;
+                            normal = thisNormal;
+                        }
+                    }
+                }
+                
+                if (thisCollision)
+                {
+                    if (volley)
+                    {
+                        currentBall.ball.dir = reflect(currentBall.ball.dir, normal);
+                        currentBall.pos += wantedMovement + pop;
+                        remainAdvance = popLength;
+                    }
+                    else
+                    {
+                        // TODO player addded energy to the ball if not volley? 
+                        currentBall.pos += pop;
+                        remainAdvance = MAX(0.0f, remainAdvance - popLength);
+                    }
+                    for(i32 i = 0; i < ARRAYSIZE(players); i++){
+                        Entity* player = players[i];
+                        ConvexHull* playerBody = &player->body;
+                        ASSERT(!collide(currentBall.pos, &currentBall.body, player->pos, playerBody));
+                    }
+
+                    collision = true;
+                    // TODO consider bounces & audio only on whole loop?
+                    bounces--;
+                    // TODO consider audio only after loop, if we colided?
+                    playAudio(&game->track);
+
+                    wantedMovement = currentBall.ball.dir*remainAdvance;
+                    for(u32 p = 0; p < ball->body.count; p++)
+                    {
+                        ballMovementHull.points[p] = currentBall.body.points[p];
+                        ballMovementHull.points[p+ball->body.count] = ballMovementHull.points[p] + wantedMovement;
+                    }
+                }
+            }
+
+            // 2)
+            if(!isTiny(remainAdvance)){
+                bool thisCollision = false;
+                v2 normal = V2(0, 0);
+                v2 pop = V2(0, 0);
+                f32 popLength = 0;
+                for(i32 i = 0; i < ARRAYSIZE(bouncers); i++){
+                    Entity* bouncer = bouncers[i];
+                    if (collide(currentBall.pos, &ballMovementHull, bouncer->pos, &bouncer->body)){
+                        thisCollision = true;
+                        v2 thisNormal = V2(0, 0);
+                        v2 thisPop = collidePop(currentBall.pos, &ballMovementHull, bouncer->pos, &bouncer->body, -(currentBall.ball.dir*remainAdvance), &thisNormal);
+                        ASSERT(dot(thisPop, -wantedMovement) > 0);
+                        f32 thisPopLength = length(thisPop);
+                        f32 thisAdvanceLength = length(wantedMovement);
+                        if(thisPopLength > thisAdvanceLength)
+                        {
+                            // nothing can rewind our movement fully further
+                            pop = -wantedMovement;
+                            popLength = thisAdvanceLength;
+                            normal = thisNormal;
+                            break;
+                        }
+                        if (thisPopLength > popLength)
+                        {
+                            pop = thisPop;
+                            popLength = thisPopLength;
+                            normal = thisNormal;
+                        }
+                    }
+                }
+                if (thisCollision)
+                {
+                    currentBall.ball.dir = reflect(currentBall.ball.dir, normal);
+                    currentBall.pos += wantedMovement + pop;
+                    remainAdvance = popLength;
+
+                    collision = true;
+                    // TODO consider bounces & audio only on whole loop?
+                    bounces--;
+                    // TODO consider audio only after loop, if we colided?
+                    playAudio(&game->track);
+
+                    wantedMovement = currentBall.ball.dir*remainAdvance;
+                    for(u32 p = 0; p < ball->body.count; p++)
+                    {
+                        ballMovementHull.points[p] = currentBall.body.points[p];
+                        ballMovementHull.points[p+ball->body.count] = ballMovementHull.points[p] + wantedMovement;
+                    }
+                }
+            }
+
+            // 3)
+            for(i32 i = 0; i < ARRAYSIZE(players); i++){
+                Entity* player = players[i];
+                ConvexHull* playerBody = &player->body;
+                if (collide(currentBall.pos, &currentBall.body, player->pos, playerBody)){
+                    collision = true;
+                    v2 normal = V2(0, 0);
+                    v2 pop = collidePop(currentBall.pos, &currentBall.body, player->pos, &player->body, currentBall.pos - player->pos, &normal);
+                    // players start at index 2
+                    player->pos -= pop;
+                    ASSERT(!collide(currentBall.pos, &currentBall.body, player->pos, playerBody));
+                    currentBall.vel = V2(0, 0);
+                    currentBall.ball.acc = V2(0, 0);
+                    remainAdvance = 0;
+                    bounces--;
+                    break;
+                }
+            }
+
+            // 4) 
+            if (!collision){
+                remainAdvance = 0;
+                if (collide(currentBall.pos, &ballMovementHull, game->boundaries[1].pos, &game->boundaries[1].body)){
+                    player2->player.score += 1;
+                    ball->vel = V2(0, 0);
+                    ball->pos = V2(0, 0);
+                    player2->vel = V2(0, 0);
+                    POP;
+                    return;
+                }
+                else if (collide(currentBall.pos, &ballMovementHull, game->boundaries[3].pos, &game->boundaries[3].body)){
+                    player1->player.score += 1;
+                    ball->vel = V2(0, 0);
+                    ball->pos = V2(0, 0);
+                    player2->vel = V2(0, 0);
+                    POP;
+                    return;
+                }
+                
+                // 5)
+                currentBall.pos += wantedMovement;
+            }
+        }
+
+    // HERE
+    // original
+    /*
     if (!isTiny(ball->vel)){
         f32 remainAdvance = length(ball->vel)*CAST(f32, dt);
         i32 bounces = 5;
@@ -584,14 +814,14 @@ void gameFixedStep(f64 dt){
             }
 
         } while (!isTiny(remainAdvance) && bounces > 0);
+        */
 
-        // Non tiny remain advance can remain, however that means the ball & player are clutched
-        // which is solved by 5 bounces and then stops
 
         *ball = currentBall;
         ball->vel = currentBall.ball.dir * length(ball->vel);
-
+        POP;
     }
+
 
 }
 
