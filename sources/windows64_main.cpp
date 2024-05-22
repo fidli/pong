@@ -500,7 +500,8 @@ int main(LPWSTR * argvW, int argc) {
         Game previousState = *game;
         while (platform->appRunning) {
             if(!wasShowProfile && platform->showProfile){
-                platform->framesRenderedSinceLastProfileClear = 0;
+                profileEnd();
+                profileBegin();
             }
             wasShowProfile = platform->showProfile;
             if(fpsTimer->ticked){
@@ -568,7 +569,6 @@ int main(LPWSTR * argvW, int argc) {
             // advance timers
             advanceTimers(frameTime);
             platform->frameIndex++;
-            platform->framesRenderedSinceLastProfileClear++;
         }
         LOG(default, common, "Quitting main loop");
         //END OF MAIN LOOP

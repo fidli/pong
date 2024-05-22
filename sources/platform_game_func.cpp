@@ -11,7 +11,6 @@ struct Platform{
     u64 frameIndex;
 
     f32 fps;
-    u32 framesRenderedSinceLastProfileClear;
     bool showProfile;
 
     bool mouseOut;

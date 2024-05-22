@@ -350,9 +350,8 @@ inline void render(Game * state, f64 dt) {
 
 		if (platform->showProfile) {
 			PROFILE_SCOPE("profile");
-#if 0
-            // TODO re-do
-			ProfileStats* stats = getCurrentProfileStats();
+#if PROFILE
+            int namewidth = 30; // per title column
 			GuiStyle* profileStyle = &PUSH(GuiStyle);
 			*profileStyle = *style;
 			profileStyle->container.padding = { CAST(i32, 20 * resolutionScale.y), CAST(i32, 20 * resolutionScale.x), CAST(i32, 20 * resolutionScale.y), CAST(i32, 20 * resolutionScale.x) };
@@ -363,21 +362,39 @@ inline void render(Game * state, f64 dt) {
 			profileStyle->pt = CAST(i32, 14 * resolutionScale.y);
 			// NOTE(fidli): broken, but it seems to work like this
 			i32 textHeight = MAX(CAST(i32, profileStyle->font->lineHeight * ptToPx(CAST(f32, profileStyle->pt)) / profileStyle->font->pixelSize), profileStyle->text.minHeight);
-			i32 containerHeight = CAST(i32, (40 + (6 + textHeight) * (stats->count + 3)) * resolutionScale.y);
+			i32 containerHeight = CAST(i32, (40 + (6 + textHeight) * (profile.slotsUsed + 3)) * resolutionScale.y);
 			i32 containerWidth = CAST(i32, 840 * resolutionScale.x);
 			char* line = &PUSHA(char, 255);
-			snprintf(line, 255, "%-30s %-15s %-15s %-10s", "PROFILE_SECTION", "Avg[ms]", "Avg calls/frame", "Total time/frame[ms]");
+            snprintf(line, 255, "| %*s | %10s | %20s |"
+                    " %10s | %20s | %10s | %14s |"
+                    " %20s | %12s | %5s |",
+                    namewidth, "name", "total [s]", "excl [s]",
+                    "thr [MB/s]", "cost [cycles/byte]", "avg [s]", "avg thr [MB/s]",
+                    "avg cost [cyc/byte]", "avg excl [s]", "calls");
 			GuiContainer* profileContainer = guiAddContainer(NULL, profileStyle, platform->resolution.x / 2 - containerWidth / 2, platform->resolution.y / 2 - containerHeight / 2, containerWidth, containerHeight, NULL, GuiJustify_Middle);
 			guiRenderBoxText(profileContainer, profileStyle, line);
 			guiEndline(profileContainer, profileStyle);
-			for (i32 i = 0; i < stats->count; i++) {
-				ProfileStats::Entry* entry = &stats->entries[i];
-				f32 callsPerFrame = CAST(f32, entry->totalCount) / (platform->framesRenderedSinceLastProfileClear + 1);
-                f64 avgTime = entry->totalTime / entry->totalCount;
-				snprintf(line, 255, "%-30s %-13.2lf %-15.1f %-10.1f", entry->name, avgTime * 1000, callsPerFrame, avgTime * 1000 * callsPerFrame);
+            f64 totalTimeProfile = CAST(f64, profile.endTime - profile.startTime) * profile.period;
+            for(i32 i = 0; i < profile.slotsUsed; i++){
+                ProfileEntry * entry = &profile.slots[i];
+                u64 totalCount = entry->callCountTotal;
+                f64 totalTimeIncl = CAST(f64, entry->timeSpentInclusive)*profile.period;
+                f64 totalExclTime = CAST(f64, entry->timeSpentExclusive)*profile.period;
+                f64 perc = 100.0*totalExclTime / totalTimeProfile;
+                f64 totalCost = (entry->bytesProcessed > 0) ? CAST(f64, entry->timeSpentInclusive) / entry->bytesProcessed : 0;
+                f64 avgTime = totalTimeIncl/entry->callCountTotal;
+                f64 avgExclTime = totalExclTime/entry->callCountTotal;
+                f64 avgCost = totalCost/entry->callCountTotal;
+                f64 thr = (CAST(f64, entry->bytesProcessed)/CAST(f64, MEGABYTE(1))) / totalTimeIncl;
+                f64 avgThr = thr / totalCount;
+                const char * name = profile.names[i];
+                snprintf(line, 255, "| %*s | %10f | %10f (%6.2f%%) | %10.3f | %20.3f | %10f | %14.3f | %20f | %12f | %5llu |\n", namewidth, name, totalTimeIncl, totalExclTime, perc, thr, totalCost, avgTime, avgThr, avgCost, avgExclTime, totalCount);
 				guiRenderBoxText(profileContainer, profileStyle, line);
 				guiEndline(profileContainer, profileStyle);
 			}
+            snprintf(line, 255, "| %*s | %10s | %10f (100.00%%) | %10s | %20s | %10s | %14s | %20s | %12s | %5s |\n", namewidth, "", "", totalTimeProfile, "", "", "", "", "", "", "");
+            guiRenderBoxText(profileContainer, profileStyle, line);
+            guiEndline(profileContainer, profileStyle);
 #endif
 		}
 		// status bar

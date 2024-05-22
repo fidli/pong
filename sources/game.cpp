@@ -277,6 +277,9 @@ void gameHandleInput(){
     if(keys[keymap[GameAction_Kick].key].down){
         player1->player.action |= 1 << GameAction_Kick;
     }
+    if(keys['P'].down){
+        platform->showProfile = !platform->showProfile;
+    }
 }
 
 void gameFixedStep(f64 dt){
